@@ -1,5 +1,5 @@
-import { NutritionStore, DEFAULT_SETTINGS } from './store.js';
-import { SyncManager } from './sync-manager.js';
+import { NutritionStore, DEFAULT_SETTINGS } from './store.js?db=3';
+import { SyncManager } from './sync-manager.js?v=17';
 import { FOOD_LIBRARY, searchFoods } from './foods.js';
 import {
   calculateActivityMultiplier,
