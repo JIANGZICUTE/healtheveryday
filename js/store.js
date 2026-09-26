@@ -297,21 +297,79 @@ export class NutritionStore {
 
   async replaceData(backup) {
     validateBackup(backup);
-    await this.#runTransaction(Object.values(STORE_NAMES), 'readwrite', stores => {
-      DATA_STORE_NAMES.forEach(name => stores[name].clear());
-      if (backup.profile) stores[STORE_NAMES.profile].put({ ...backup.profile, id: 'profile' });
-      (backup.weights || []).forEach(item => stores[STORE_NAMES.weights].put(item));
-      (backup.foods || []).forEach(item => stores[STORE_NAMES.foods].put(normalizeFood(item)));
-      (backup.entries || []).forEach(item => stores[STORE_NAMES.entries].put(item));
-      (backup.workouts || []).forEach(item => stores[STORE_NAMES.workouts].put(item));
-      stores[STORE_NAMES.settings].put({ ...(backup.settings || DEFAULT_SETTINGS), id: 'settings' });
+    const [profile, weights, foods, entries, workouts, settings] = await Promise.all([
+      this.getProfile(),
+      this.getWeights(),
+      this.getFoods(),
+      this.getEntries(),
+      this.getWorkouts(),
+      this.getSettings()
+    ]);
+    const meta = await this.getSyncMeta();
+    const replacement = {
+      profile: backup.profile ? { ...backup.profile, id: 'profile' } : null,
+      weights: backup.weights || [],
+      foods: (backup.foods || []).map(normalizeFood),
+      entries: backup.entries || [],
+      workouts: backup.workouts || [],
+      settings: { ...(backup.settings || DEFAULT_SETTINGS), id: 'settings' }
+    };
+    const operations = buildReplacementOperations({
+      existing: { profile, weights, foods, entries, workouts, settings },
+      replacement,
+      deviceId: meta.deviceId
     });
+
+    await this.#runTransaction([...DATA_STORE_NAMES, STORE_NAMES.outbox], 'readwrite', stores => {
+      stores[STORE_NAMES.outbox].clear();
+      DATA_STORE_NAMES.forEach(name => stores[name].clear());
+      if (replacement.profile) stores[STORE_NAMES.profile].put(replacement.profile);
+      replacement.weights.forEach(item => stores[STORE_NAMES.weights].put(item));
+      replacement.foods.forEach(item => stores[STORE_NAMES.foods].put(item));
+      replacement.entries.forEach(item => stores[STORE_NAMES.entries].put(item));
+      replacement.workouts.forEach(item => stores[STORE_NAMES.workouts].put(item));
+      stores[STORE_NAMES.settings].put(replacement.settings);
+      operations.forEach(operation => stores[STORE_NAMES.outbox].put(operation));
+    });
+    this.#notify();
   }
 
   async clearAll() {
+    const [profile, weights, foods, entries, workouts, settings] = await Promise.all([
+      this.getProfile(),
+      this.getWeights(),
+      this.getFoods(),
+      this.getEntries(),
+      this.getWorkouts(),
+      this.getSettings()
+    ]);
+    const meta = await this.getSyncMeta();
+    const storedSettings = await this.#get(STORE_NAMES.settings, 'settings');
+    const existing = { profile, weights, foods, entries, workouts, settings: storedSettings ? settings : null };
+    const operations = [];
+    for (const collection of DATA_STORE_NAMES) {
+      const records = collection === STORE_NAMES.profile
+        ? (profile ? [profile] : [])
+        : collection === STORE_NAMES.settings
+          ? (storedSettings ? [settings] : [])
+          : existing[collection] || [];
+      for (const record of records) {
+        if (!isSyncableStoreRecord(collection, record)) continue;
+        operations.push(createOutboxOperation({
+          deviceId: meta.deviceId,
+          collection,
+          id: record.id || (collection === STORE_NAMES.profile ? 'profile' : 'settings'),
+          action: 'delete'
+        }));
+      }
+    }
+
     await this.#runTransaction([...DATA_STORE_NAMES, STORE_NAMES.outbox], 'readwrite', stores => {
-      Object.values(stores).forEach(store => store.clear());
+      stores[STORE_NAMES.outbox].clear();
+      DATA_STORE_NAMES.forEach(name => stores[name].clear());
+      operations.forEach(operation => stores[STORE_NAMES.outbox].put(operation));
     });
+    this.#notify();
   }
 
   static async deleteDatabase(name) {
@@ -475,6 +533,71 @@ export class NutritionStore {
   }
 }
 
+function createOutboxOperation({ deviceId, collection, id, action, data = null, clientUpdatedAt = new Date().toISOString() }) {
+  return {
+    ...normalizeOperation({
+      opId: createId('op'),
+      collection,
+      id,
+      action,
+      data,
+      clientUpdatedAt,
+      deviceId
+    }),
+    createdAt: new Date().toISOString()
+  };
+}
+
+function isSyncableStoreRecord(collection, record) {
+  if (!record) return false;
+  if (collection === STORE_NAMES.foods) return record.custom !== false;
+  return true;
+}
+
+function buildReplacementOperations({ existing, replacement, deviceId }) {
+  const operations = [];
+  const collections = [
+    STORE_NAMES.profile,
+    STORE_NAMES.weights,
+    STORE_NAMES.foods,
+    STORE_NAMES.entries,
+    STORE_NAMES.workouts,
+    STORE_NAMES.settings
+  ];
+  for (const collection of collections) {
+    const oldRecords = collection === STORE_NAMES.profile
+      ? (existing.profile ? [existing.profile] : [])
+      : collection === STORE_NAMES.settings
+        ? [existing.settings]
+        : existing[collection] || [];
+    const newRecords = collection === STORE_NAMES.profile
+      ? (replacement.profile ? [replacement.profile] : [])
+      : collection === STORE_NAMES.settings
+        ? [replacement.settings]
+        : replacement[collection] || [];
+    const newIds = new Set(newRecords.map(record => record.id));
+    for (const record of oldRecords) {
+      if (!isSyncableStoreRecord(collection, record)) continue;
+      const id = record.id || (collection === STORE_NAMES.profile ? 'profile' : 'settings');
+      if (!newIds.has(id)) {
+        operations.push(createOutboxOperation({ deviceId, collection, id, action: 'delete' }));
+      }
+    }
+    for (const record of newRecords) {
+      if (!isSyncableStoreRecord(collection, record)) continue;
+      const id = record.id || (collection === STORE_NAMES.profile ? 'profile' : 'settings');
+      operations.push(createOutboxOperation({
+        deviceId,
+        collection,
+        id,
+        action: 'put',
+        data: record,
+        clientUpdatedAt: record.updatedAt || new Date().toISOString()
+      }));
+    }
+  }
+  return operations;
+}
 function mergeRemoteSettings(remote, localSettings) {
   const localBackground = localSettings?.background || DEFAULT_SETTINGS.background;
   const remoteBackground = remote.background || {};
