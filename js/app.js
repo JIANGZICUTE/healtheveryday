@@ -1,4 +1,5 @@
 import { NutritionStore, DEFAULT_SETTINGS } from './store.js';
+import { SyncManager } from './sync-manager.js';
 import { FOOD_LIBRARY, searchFoods } from './foods.js';
 import {
   calculateActivityMultiplier,
@@ -30,6 +31,11 @@ const params = new URLSearchParams(window.location.search);
 const isTestMode = params.has('test');
 const databaseName = params.get('db') || (isTestMode ? `nutrition-atlas-ui-test-${Date.now()}` : undefined);
 const store = new NutritionStore(databaseName);
+const syncManager = new SyncManager(store, {
+  onStatus: status => { updateSyncStatus(status).catch(() => {}); },
+  onChanges: changes => { handleRemoteChanges(changes).catch(() => {}); },
+  onAuthRequired: redirectToLogin
+});
 const todayKey = localDateKey();
 let deferredInstallPrompt = null;
 let pendingImport = null;
@@ -82,13 +88,21 @@ async function init() {
     await reloadState();
     await ensureActiveBackgroundTheme();
     bindEvents();
+    store.subscribe(() => {
+      if (!isTestMode) {
+        updateSyncStatus({ state: 'pending' }).catch(() => {});
+        syncManager.sync().catch(() => {});
+      }
+    });
     populateFoodCategories();
     syncProfileForm();
     syncWeightForm();
     syncBackgroundForm();
     applyBackground(state.settings);
+    renderAccount();
     renderRoute('today');
     document.documentElement.dataset.appReady = 'true';
+    if (!isTestMode) syncManager.start();
     if (isTestMode) window.__nutritionAtlas = { store, state, renderRoute, reloadState };
     if (!isTestMode && 'serviceWorker' in navigator) {
       navigator.serviceWorker.register('./sw.js').catch(() => {});
@@ -99,6 +113,156 @@ async function init() {
   }
 }
 
+async function handleRemoteChanges(changes) {
+  await reloadState();
+  populateFoodCategories();
+  syncProfileForm();
+  syncWeightForm();
+  syncBackgroundForm();
+  applyBackground(state.settings);
+  renderAccount();
+  renderRoute(state.route);
+  showToast(`已同步 ${changes.length} 项来自其他设备的更新`);
+}
+
+async function updateSyncStatus(status) {
+  const stateName = status?.state || 'idle';
+  const labels = {
+    idle: '等待同步',
+    pending: '等待上传',
+    syncing: '正在同步',
+    synced: '已同步',
+    error: '同步失败',
+    'auth-required': '登录已过期'
+  };
+  const label = labels[stateName] || labels.idle;
+  const statusElement = $('#account-sync-status');
+  const statusText = $('#account-sync-status-text');
+  const detail = $('#account-sync-detail');
+  const brandStatus = $('#brand-auth-status');
+  if (!statusElement || !statusText || !detail || !brandStatus) return;
+  statusElement.dataset.state = stateName;
+  statusText.textContent = label;
+  brandStatus.textContent = stateName === 'synced' ? '已登录 · 数据已同步' : `已登录 · ${label}`;
+
+  try {
+    const pending = (await store.getOutbox()).length;
+    if (stateName === 'synced') {
+      detail.textContent = pending ? `已上传，仍有 ${pending} 项等待处理。` : '两台设备已使用同一份云端数据。';
+    } else if (stateName === 'error') {
+      detail.textContent = status.error?.message || '网络异常，本地数据不会丢失。';
+    } else if (stateName === 'pending') {
+      detail.textContent = `有 ${pending} 项本地修改等待上传。`;
+    } else {
+      detail.textContent = pending ? `${pending} 项修改等待上传。` : '正在检查云端数据。';
+    }
+  } catch {
+    detail.textContent = '本地数据会在联网后自动同步。';
+  }
+}
+
+function redirectToLogin() {
+  const next = `${window.location.pathname}${window.location.search}`;
+  window.location.assign(`/login.html?next=${encodeURIComponent(next)}`);
+}
+
+async function logout() {
+  try {
+    await fetch('/api/logout', { method: 'POST', credentials: 'same-origin' });
+  } finally {
+    window.location.assign('/login.html');
+  }
+}
+
+function renderAccount() {
+  const nickname = String(state.profile?.nickname || '').trim() || '量子冰淇淋';
+  const avatarData = state.profile?.avatarData || '';
+  const nicknameElement = $('#brand-nickname');
+  const nicknameInput = $('#account-nickname');
+  if (nicknameElement) nicknameElement.textContent = nickname;
+  if (nicknameInput) nicknameInput.value = nickname;
+
+  for (const selector of ['#brand-avatar', '#account-avatar']) {
+    const image = $(selector);
+    if (!image) continue;
+    image.hidden = !avatarData;
+    image.src = avatarData || '';
+  }
+  for (const selector of ['#brand-avatar-fallback', '#account-avatar-fallback']) {
+    const fallback = $(selector);
+    if (!fallback) continue;
+    fallback.hidden = Boolean(avatarData);
+    fallback.textContent = nickname.slice(0, 1);
+  }
+}
+
+async function handleNicknameSubmit(event) {
+  event.preventDefault();
+  const input = $('#account-nickname');
+  const nickname = String(input?.value || '').trim() || '量子冰淇淋';
+  if (nickname.length > 24) {
+    showToast('昵称不能超过 24 个字符。', 'error');
+    return;
+  }
+  state.profile = await store.saveProfile({ ...(state.profile || {}), nickname });
+  renderAccount();
+  showToast('昵称已保存并加入同步队列');
+}
+
+async function handleAvatarFile(event) {
+  const file = event.target.files?.[0];
+  event.target.value = '';
+  if (!file) return;
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+    showToast('请选择 JPG、PNG 或 WebP 图片。', 'error');
+    return;
+  }
+  if (file.size > 8 * 1024 * 1024) {
+    showToast('头像原图不能超过 8MB。', 'error');
+    return;
+  }
+  try {
+    const objectUrl = URL.createObjectURL(file);
+    const image = await loadImageSource(objectUrl, true);
+    const avatarData = await createAvatarDataUrl(image);
+    state.profile = await store.saveProfile({ ...(state.profile || {}), avatarData });
+    renderAccount();
+    showToast('头像已保存并加入同步队列');
+  } catch (error) {
+    showToast(`头像保存失败：${error.message}`, 'error');
+  }
+}
+
+async function createAvatarDataUrl(image) {
+  const sizes = [
+    { size: 256, quality: 0.84 },
+    { size: 200, quality: 0.76 },
+    { size: 160, quality: 0.7 }
+  ];
+  let result = '';
+  for (const item of sizes) {
+    const canvas = document.createElement('canvas');
+    canvas.width = item.size;
+    canvas.height = item.size;
+    const context = canvas.getContext('2d');
+    const sourceSize = Math.min(image.naturalWidth, image.naturalHeight);
+    const sourceX = (image.naturalWidth - sourceSize) / 2;
+    const sourceY = (image.naturalHeight - sourceSize) / 2;
+    context.drawImage(image, sourceX, sourceY, sourceSize, sourceSize, 0, 0, item.size, item.size);
+    result = canvas.toDataURL('image/webp', item.quality);
+    if (!result.startsWith('data:image/webp')) result = canvas.toDataURL('image/jpeg', item.quality);
+    if (result.length <= 600_000) break;
+  }
+  if (!result || result.length > 850_000) throw new Error('图片仍然过大，请选择更简单的头像');
+  return result;
+}
+
+async function removeAvatar() {
+  if (!state.profile?.avatarData) return;
+  state.profile = await store.saveProfile({ ...state.profile, avatarData: null });
+  renderAccount();
+  showToast('头像已移除');
+}
 async function reloadState() {
   const [profile, foods, weights, entries, workouts, settings] = await Promise.all([
     store.getProfile(),
@@ -152,6 +316,12 @@ function bindEvents() {
   $('#import-file').addEventListener('change', prepareImport);
   $('#confirm-import').addEventListener('click', confirmImport);
   $('#reset-data').addEventListener('click', resetAllData);
+  $('#account-button').addEventListener('click', () => openDialog('#account-dialog'));
+  $('#account-name-form').addEventListener('submit', handleNicknameSubmit);
+  $('#avatar-file').addEventListener('change', handleAvatarFile);
+  $('#remove-avatar').addEventListener('click', removeAvatar);
+  $('#sync-now').addEventListener('click', () => syncManager.sync().catch(() => {}));
+  $('#logout-button').addEventListener('click', logout);
 
   $('#background-type').addEventListener('change', handleBackgroundChange);
   $('#background-color').addEventListener('input', debounce(handleBackgroundChange, 120));

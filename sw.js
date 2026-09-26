@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nutrition-atlas-v15-patch1';
+const CACHE_NAME = 'nutrition-atlas-v16-sync';
 const APP_SHELL = [
   './',
   './index.html',
@@ -10,6 +10,8 @@ const APP_SHELL = [
   './js/charts.js',
   './js/foods.js',
   './js/store.js',
+  './js/sync-core.js',
+  './js/sync-manager.js',
   './js/utils.js',
   './js/theme.js'
 ];
@@ -19,38 +21,29 @@ self.addEventListener('install', event => {
 });
 
 self.addEventListener('activate', event => {
-  event.waitUntil(
-    caches.keys()
-      .then(keys => Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key))))
-      .then(() => self.clients.claim())
-  );
+  event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key)))).then(() => self.clients.claim()));
 });
 
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
   const requestUrl = new URL(event.request.url);
-  if (requestUrl.origin !== self.location.origin) return;
-
+  if (requestUrl.origin !== self.location.origin || requestUrl.pathname.startsWith('/api/')) return;
   if (event.request.mode === 'navigate') {
-    event.respondWith(
-      fetch(event.request)
-        .then(response => {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put('./index.html', copy));
-          return response;
-        })
-        .catch(() => caches.match('./index.html'))
-    );
-    return;
-  }
-
-  event.respondWith(
-    caches.match(event.request).then(cached => cached || fetch(event.request).then(response => {
-      if (response.ok) {
+    event.respondWith(fetch(event.request).then(response => {
+      const finalPath = new URL(response.url).pathname;
+      if (response.ok && finalPath !== '/login.html') {
         const copy = response.clone();
-        caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
+        caches.open(CACHE_NAME).then(cache => cache.put('./index.html', copy));
       }
       return response;
-    }))
-  );
+    }).catch(() => caches.match('./index.html')));
+    return;
+  }
+  event.respondWith(caches.match(event.request).then(cached => cached || fetch(event.request).then(response => {
+    if (response.ok) {
+      const copy = response.clone();
+      caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
+    }
+    return response;
+  })));
 });

@@ -1,15 +1,27 @@
 import { scaleNutrition } from './calculations.js';
+import { normalizeOperation, sanitizeSyncData } from './sync-core.js';
 
 const DB_NAME = 'nutrition-atlas';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const STORE_NAMES = Object.freeze({
   profile: 'profile',
   weights: 'weights',
   foods: 'foods',
   entries: 'entries',
   workouts: 'workouts',
-  settings: 'settings'
+  settings: 'settings',
+  outbox: 'outbox',
+  syncMeta: 'syncMeta'
 });
+
+const DATA_STORE_NAMES = Object.freeze([
+  STORE_NAMES.profile,
+  STORE_NAMES.weights,
+  STORE_NAMES.foods,
+  STORE_NAMES.entries,
+  STORE_NAMES.workouts,
+  STORE_NAMES.settings
+]);
 
 export const DEFAULT_SETTINGS = Object.freeze({
   workoutNames: null,
@@ -35,6 +47,7 @@ export class NutritionStore {
   constructor(databaseName = DB_NAME) {
     this.databaseName = databaseName;
     this.db = null;
+    this.listeners = new Set();
   }
 
   async open() {
@@ -63,8 +76,16 @@ export class NutritionStore {
         if (!db.objectStoreNames.contains(STORE_NAMES.workouts)) {
           const store = db.createObjectStore(STORE_NAMES.workouts, { keyPath: 'id' });
           store.createIndex('date', 'date', { unique: false });
-        }        if (!db.objectStoreNames.contains(STORE_NAMES.settings)) {
+        }
+        if (!db.objectStoreNames.contains(STORE_NAMES.settings)) {
           db.createObjectStore(STORE_NAMES.settings, { keyPath: 'id' });
+        }
+        if (!db.objectStoreNames.contains(STORE_NAMES.outbox)) {
+          const store = db.createObjectStore(STORE_NAMES.outbox, { keyPath: 'opId' });
+          store.createIndex('createdAt', 'createdAt', { unique: false });
+        }
+        if (!db.objectStoreNames.contains(STORE_NAMES.syncMeta)) {
+          db.createObjectStore(STORE_NAMES.syncMeta, { keyPath: 'id' });
         }
       };
       request.onsuccess = () => resolve(request.result);
@@ -79,6 +100,12 @@ export class NutritionStore {
     this.db = null;
   }
 
+  subscribe(listener) {
+    if (typeof listener !== 'function') throw new Error('同步订阅者无效');
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
   async getProfile() {
     const record = await this.#get(STORE_NAMES.profile, 'profile');
     if (!record) return null;
@@ -87,7 +114,7 @@ export class NutritionStore {
   }
 
   async saveProfile(profile) {
-    await this.#put(STORE_NAMES.profile, { ...profile, id: 'profile', updatedAt: new Date().toISOString() });
+    await this.#putWithSync(STORE_NAMES.profile, { ...profile, id: 'profile', updatedAt: new Date().toISOString() });
     return this.getProfile();
   }
 
@@ -105,12 +132,12 @@ export class NutritionStore {
       createdAt: weight.createdAt || now,
       updatedAt: now
     };
-    await this.#put(STORE_NAMES.weights, record);
+    await this.#putWithSync(STORE_NAMES.weights, record);
     return record;
   }
 
   async deleteWeight(id) {
-    await this.#delete(STORE_NAMES.weights, id);
+    await this.#deleteWithSync(STORE_NAMES.weights, id);
   }
 
   async getLatestWeight() {
@@ -135,14 +162,15 @@ export class NutritionStore {
       createdAt: food.createdAt || existing?.createdAt || now,
       updatedAt: now
     });
-    await this.#put(STORE_NAMES.foods, record);
+    if (record.custom === false) await this.#put(STORE_NAMES.foods, record);
+    else await this.#putWithSync(STORE_NAMES.foods, record);
     return record;
   }
 
   async deleteFood(id) {
     const food = await this.getFood(id);
     if (food?.custom === false) throw new Error('内置食物不能直接删除，请复制后编辑');
-    await this.#delete(STORE_NAMES.foods, id);
+    await this.#deleteWithSync(STORE_NAMES.foods, id);
   }
 
   async seedFoods(foods) {
@@ -175,12 +203,12 @@ export class NutritionStore {
       createdAt: workout.createdAt || now,
       updatedAt: now
     };
-    await this.#put(STORE_NAMES.workouts, record);
+    await this.#putWithSync(STORE_NAMES.workouts, record);
     return record;
   }
 
   async deleteWorkout(id) {
-    await this.#delete(STORE_NAMES.workouts, id);
+    await this.#deleteWithSync(STORE_NAMES.workouts, id);
   }
   async getEntries(date) {
     if (date) {
@@ -213,12 +241,12 @@ export class NutritionStore {
       createdAt: entry.createdAt || now,
       updatedAt: now
     };
-    await this.#put(STORE_NAMES.entries, record);
+    await this.#putWithSync(STORE_NAMES.entries, record);
     return record;
   }
 
   async deleteEntry(id) {
-    await this.#delete(STORE_NAMES.entries, id);
+    await this.#deleteWithSync(STORE_NAMES.entries, id);
   }
 
   async getSettings() {
@@ -241,7 +269,7 @@ export class NutritionStore {
       id: 'settings',
       updatedAt: new Date().toISOString()
     };
-    await this.#put(STORE_NAMES.settings, record);
+    await this.#putWithSync(STORE_NAMES.settings, record);
     return this.getSettings();
   }
 
@@ -270,7 +298,7 @@ export class NutritionStore {
   async replaceData(backup) {
     validateBackup(backup);
     await this.#runTransaction(Object.values(STORE_NAMES), 'readwrite', stores => {
-      Object.values(stores).forEach(store => store.clear());
+      DATA_STORE_NAMES.forEach(name => stores[name].clear());
       if (backup.profile) stores[STORE_NAMES.profile].put({ ...backup.profile, id: 'profile' });
       (backup.weights || []).forEach(item => stores[STORE_NAMES.weights].put(item));
       (backup.foods || []).forEach(item => stores[STORE_NAMES.foods].put(normalizeFood(item)));
@@ -281,7 +309,7 @@ export class NutritionStore {
   }
 
   async clearAll() {
-    await this.#runTransaction(Object.values(STORE_NAMES), 'readwrite', stores => {
+    await this.#runTransaction([...DATA_STORE_NAMES, STORE_NAMES.outbox], 'readwrite', stores => {
       Object.values(stores).forEach(store => store.clear());
     });
   }
@@ -293,6 +321,117 @@ export class NutritionStore {
       request.onerror = () => reject(request.error || new Error('测试数据库清理失败'));
       request.onblocked = () => resolve();
     });
+  }
+
+  async getSyncMeta() {
+    const existing = await this.#get(STORE_NAMES.syncMeta, 'syncMeta');
+    if (existing) return existing;
+    const meta = {
+      id: 'syncMeta',
+      deviceId: createId('device'),
+      cursor: 0,
+      lastSyncAt: null,
+      lastError: null
+    };
+    await this.#put(STORE_NAMES.syncMeta, meta);
+    return meta;
+  }
+
+  async saveSyncMeta(patch) {
+    const current = await this.getSyncMeta();
+    const record = { ...current, ...patch, id: 'syncMeta' };
+    await this.#put(STORE_NAMES.syncMeta, record);
+    return record;
+  }
+
+  async getOutbox() {
+    const operations = await this.#all(STORE_NAMES.outbox);
+    return operations.sort((left, right) => (
+      String(left.createdAt).localeCompare(String(right.createdAt))
+      || String(left.opId).localeCompare(String(right.opId))
+    ));
+  }
+
+  async removeOutbox(opIds) {
+    const ids = [...new Set(opIds)].filter(Boolean);
+    if (!ids.length) return;
+    await this.#runTransaction(STORE_NAMES.outbox, 'readwrite', stores => {
+      const outbox = stores[STORE_NAMES.outbox];
+      ids.forEach(opId => outbox.delete(opId));
+    });
+  }
+
+  async applyRemoteChanges(changes) {
+    const validChanges = (changes || []).filter(change => (
+      change
+      && DATA_STORE_NAMES.includes(change.collection)
+      && typeof change.id === 'string'
+      && change.id
+    ));
+    if (!validChanges.length) return 0;
+
+    const localSettings = validChanges.some(change => change.collection === STORE_NAMES.settings)
+      ? await this.getSettings()
+      : null;
+    const storeNames = [...new Set(validChanges.map(change => change.collection))];
+    await this.#runTransaction(storeNames, 'readwrite', stores => {
+      for (const change of validChanges) {
+        const store = stores[change.collection];
+        if (change.deleted) {
+          store.delete(change.id);
+          continue;
+        }
+        if (change.collection === STORE_NAMES.settings) {
+          const remote = sanitizeSyncData('settings', change.data || {});
+          store.put(mergeRemoteSettings(remote, localSettings));
+          continue;
+        }
+        store.put({ ...(change.data || {}), id: change.id });
+      }
+    });
+    return validChanges.length;
+  }
+  async #putWithSync(storeName, value) {
+    const meta = await this.getSyncMeta();
+    const operation = normalizeOperation({
+      opId: createId('op'),
+      collection: storeName,
+      id: value.id,
+      action: 'put',
+      data: value,
+      clientUpdatedAt: value.updatedAt || new Date().toISOString(),
+      deviceId: meta.deviceId
+    });
+    const transaction = this.db.transaction([storeName, STORE_NAMES.outbox], 'readwrite');
+    transaction.objectStore(storeName).put(value);
+    transaction.objectStore(STORE_NAMES.outbox).put({ ...operation, createdAt: new Date().toISOString() });
+    await transactionDone(transaction);
+    this.#notify();
+    return value;
+  }
+
+  async #deleteWithSync(storeName, id) {
+    const meta = await this.getSyncMeta();
+    const operation = normalizeOperation({
+      opId: createId('op'),
+      collection: storeName,
+      id,
+      action: 'delete',
+      data: null,
+      clientUpdatedAt: new Date().toISOString(),
+      deviceId: meta.deviceId
+    });
+    const transaction = this.db.transaction([storeName, STORE_NAMES.outbox], 'readwrite');
+    transaction.objectStore(storeName).delete(id);
+    transaction.objectStore(STORE_NAMES.outbox).put({ ...operation, createdAt: new Date().toISOString() });
+    await transactionDone(transaction);
+    this.#notify();
+  }
+
+  #notify() {
+    for (const listener of this.listeners) {
+      try { listener(); } catch {}
+    }
   }
 
   async #get(storeName, key) {
@@ -336,6 +475,29 @@ export class NutritionStore {
   }
 }
 
+function mergeRemoteSettings(remote, localSettings) {
+  const localBackground = localSettings?.background || DEFAULT_SETTINGS.background;
+  const remoteBackground = remote.background || {};
+  const mergedBackground = {
+    ...localBackground,
+    ...remoteBackground,
+    images: localBackground.images || [],
+    imageData: localBackground.imageData || null,
+    imageId: localBackground.imageId || null,
+    imageName: localBackground.imageName || null,
+    crop: localBackground.crop || null
+  };
+  if (mergedBackground.type === 'image' && !mergedBackground.imageData) {
+    mergedBackground.type = 'gradient';
+  }
+  return {
+    ...DEFAULT_SETTINGS,
+    ...localSettings,
+    ...remote,
+    id: 'settings',
+    background: mergedBackground
+  };
+}
 function normalizeFood(food) {
   const per100g = food.per100g || {};
   return {

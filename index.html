@@ -22,15 +22,16 @@
   <div class="app-shell">
     <aside class="sidebar" aria-label="主导航">
       <div class="brand">
-        <svg class="brand-mark" viewBox="0 0 48 48" aria-hidden="true">
-          <path d="M24 5c10.5 0 19 8.2 19 18.3S34.5 43 24 43 5 39.3 5 29.2 13.5 5 24 5Z" fill="none" stroke="currentColor" stroke-width="2.4"/>
-          <path d="M15 25c4.8-.4 8.3-2.4 10.6-6.1 2.1 5.2 6.6 8 13.1 8.3-3.1 6.8-8.4 10.2-15.9 10.2S16.1 34 15 25Z" fill="currentColor" opacity=".18"/>
-          <path d="M24 8.5v29M9.2 23.3h29.6" stroke="currentColor" stroke-width="1.2" opacity=".55"/>
-        </svg>
-        <div>
-          <p class="brand-name">量子冰淇淋</p>
-          
-        </div>
+        <button class="brand-account" id="account-button" type="button" aria-haspopup="dialog" aria-controls="account-dialog">
+          <span class="brand-avatar" aria-hidden="true">
+            <img id="brand-avatar" alt="" hidden>
+            <span id="brand-avatar-fallback">量</span>
+          </span>
+          <span class="brand-copy">
+            <span class="brand-name" id="brand-nickname">量子冰淇淋</span>
+            <span class="brand-subtitle" id="brand-auth-status">已登录 · 等待同步</span>
+          </span>
+        </button>
       </div>
 
       <nav class="primary-nav">
@@ -509,6 +510,43 @@
       <div class="dialog-actions">
         <button class="quiet-button" type="button" data-close-dialog="background-crop-dialog">取消</button>
         <button class="primary-button" id="save-background-crop" type="button">使用此区域并保存</button>
+      </div>
+    </div>
+  </dialog>
+  <dialog class="app-dialog" id="account-dialog" aria-labelledby="account-dialog-title">
+    <div class="dialog-card account-dialog-card">
+      <div class="dialog-heading">
+        <div><p class="section-label">私人账号</p><h2 id="account-dialog-title">量子冰淇淋</h2></div>
+        <button class="icon-button" type="button" data-close-dialog="account-dialog" aria-label="关闭"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
+      </div>
+      <div class="account-profile">
+        <div class="account-avatar-large" aria-hidden="true">
+          <img id="account-avatar" alt="" hidden>
+          <span id="account-avatar-fallback">量</span>
+        </div>
+        <div class="account-profile-copy">
+          <h3>头像与昵称</h3>
+          <p>头像会压缩保存；昵称显示在侧栏头像后面。两项都会同步到另一台设备。</p>
+          <form class="account-name-form" id="account-name-form">
+            <label for="account-nickname">昵称</label>
+            <div>
+              <input id="account-nickname" name="nickname" maxlength="24" autocomplete="nickname" placeholder="量子冰淇淋">
+              <button class="secondary-button" type="submit">保存昵称</button>
+            </div>
+          </form>
+          <div class="account-avatar-actions">
+            <label class="secondary-button file-button">更换头像<input id="avatar-file" type="file" accept="image/png,image/jpeg,image/webp"></label>
+            <button class="quiet-button" id="remove-avatar" type="button">移除头像</button>
+          </div>
+        </div>
+      </div>
+      <div class="account-sync-row">
+        <span class="sync-status" id="account-sync-status" data-state="idle"><span class="sync-dot" aria-hidden="true"></span><span id="account-sync-status-text">等待同步</span></span>
+        <span class="account-sync-detail" id="account-sync-detail">本地数据会在联网后自动同步。</span>
+      </div>
+      <div class="dialog-actions">
+        <button class="quiet-button" id="logout-button" type="button">退出登录</button>
+        <button class="primary-button" id="sync-now" type="button">立即同步</button>
       </div>
     </div>
   </dialog>
