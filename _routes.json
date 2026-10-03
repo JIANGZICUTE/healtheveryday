@@ -1,5 +1,1 @@
-{
-  "version": 1,
-  "include": ["/*"],
-  "exclude": ["/styles.css", "/login.css", "/icon.svg", "/manifest.webmanifest", "/js/*", "/tests/*"]
-}
+{"version":1,"include":["/*"],"exclude":["/styles.css","/login.css","/icon.svg","/manifest.webmanifest","/js/*","/tests/*","/login.html","/login","/repair.html","/repair"]}
