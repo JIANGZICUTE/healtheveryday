@@ -4506,7 +4506,7 @@ textarea {
 }
 
 html {
-  background: var(--theme-bg);
+  background: transparent;
 }
 
 body {
@@ -4514,22 +4514,12 @@ body {
 }
 
 body[data-background-type="image"] .background-dim {
-  background:
-    radial-gradient(circle at 50% 43%, transparent 0 18%, rgb(5 16 18 / calc(var(--user-bg-dim) * 0.20)) 68%, rgb(5 16 18 / calc(var(--user-bg-dim) * 0.52)) 100%),
-    rgb(5 16 18 / var(--user-bg-dim));
+  background: rgba(10, 27, 23, var(--user-bg-dim));
 }
 
 body[data-background-type="image"] .background-image::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background-image:
-    radial-gradient(circle at 20% 30%, rgb(255 255 255 / 0.18) 0 1px, transparent 1.6px),
-    radial-gradient(circle at 74% 62%, rgb(255 255 255 / 0.12) 0 1px, transparent 1.5px);
-  background-size: 86px 86px, 121px 121px;
-  opacity: 0.16;
-  mix-blend-mode: soft-light;
+  content: none;
+  display: none;
 }
 
 .sidebar {
@@ -4579,7 +4569,7 @@ body[data-background-type="image"] .background-image::after {
 }
 
 .nav-button:hover {
-  transform: translateX(2px);
+  transform: none;
   background: linear-gradient(90deg, rgb(255 255 255 / 0.14), rgb(255 255 255 / 0.06));
 }
 
@@ -4593,7 +4583,7 @@ body[data-background-type="image"] .background-image::after {
 }
 
 .nav-button.is-active svg {
-  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--theme-accent) 46%, transparent));
+  filter: none;
 }
 
 .topbar {
@@ -4830,4 +4820,35 @@ textarea:hover {
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
   }
+}
+/* Edge compositing fix: avoid backdrop sampling artifacts and preserve the wallpaper layer. */
+.sidebar,
+.brand,
+.nav-button.is-active,
+.topbar,
+.date-switcher,
+.today-overview,
+.plate-panel,
+.daily-brief,
+.chart-panel,
+.history-data-panel,
+.form-panel,
+.metabolism-panel,
+.profile-secondary-panel,
+.appearance-preview,
+.workout-record-panel,
+.workout-summary,
+.meal-block,
+.dialog-card,
+.food-toolbar,
+.background-controls,
+.effect-controls,
+.image-picker-panel,
+.image-theme-panel {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.nav-button:hover {
+  transform: none;
 }
