@@ -1,5 +1,32 @@
 const SOURCE = '常见食物典型值（参考，可编辑）';
 
+const CATEGORY_OPTIONAL_NUTRIENTS = Object.freeze({
+  '主食': { fiber: 2, sodium: 5, potassium: 120 },
+  '肉禽': { fiber: 0, sodium: 55, potassium: 250 },
+  '水产': { fiber: 0, sodium: 80, potassium: 300 },
+  '蛋奶豆': { fiber: 0.5, sodium: 60, potassium: 180 },
+  '蔬菜': { fiber: 2.2, sodium: 30, potassium: 260 },
+  '水果': { fiber: 2, sodium: 2, potassium: 180 },
+  '坚果': { fiber: 7, sodium: 10, potassium: 500 },
+  '零食饮品': { fiber: 1.5, sodium: 100, potassium: 120 },
+  '调味': { fiber: 1, sodium: 500, potassium: 200 }
+});
+
+const OPTIONAL_NUTRIENT_OVERRIDES = Object.freeze({
+  'rice-cooked': { fiber: 0.3, sodium: 1, potassium: 30 },
+  'rice-raw': { fiber: 0.8, sodium: 2, potassium: 110 },
+  'sugar': { fiber: 0, sodium: 1, potassium: 2 },
+  'honey': { fiber: 0.2, sodium: 4, potassium: 52 },
+  'soy-sauce': { fiber: 0.8, sodium: 6000, potassium: 337 },
+  'banana': { fiber: 2.6, sodium: 1, potassium: 358 },
+  'spinach': { fiber: 2.2, sodium: 79, potassium: 558 },
+  'broccoli': { fiber: 3.3, sodium: 41, potassium: 293 },
+  'avocado': { fiber: 6.7, sodium: 7, potassium: 485 }
+});
+
+function optionalNutrients(id, category) {
+  return { ...(CATEGORY_OPTIONAL_NUTRIENTS[category] || { fiber: 0, sodium: 0, potassium: 0 }), ...(OPTIONAL_NUTRIENT_OVERRIDES[id] || {}) };
+}
 const f = (id, name, pinyin, category, state, kcal, carbs, protein, fat, aliases = []) => ({
   id,
   name,
@@ -9,7 +36,7 @@ const f = (id, name, pinyin, category, state, kcal, carbs, protein, fat, aliases
   state,
   source: SOURCE,
   custom: false,
-  per100g: { kcal, carbs, protein, fat }
+  per100g: { kcal, carbs, protein, fat, ...optionalNutrients(id, category) }
 });
 
 export const FOOD_LIBRARY = Object.freeze([

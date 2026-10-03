@@ -1,5 +1,4 @@
-import { NutritionStore, DEFAULT_SETTINGS } from './store.js?db=3';
-import { SyncManager } from './sync-manager.js?v=17';
+import { NutritionStore, DEFAULT_SETTINGS } from './store.js';
 import { FOOD_LIBRARY, searchFoods } from './foods.js';
 import {
   calculateActivityMultiplier,
@@ -31,11 +30,6 @@ const params = new URLSearchParams(window.location.search);
 const isTestMode = params.has('test');
 const databaseName = params.get('db') || (isTestMode ? `nutrition-atlas-ui-test-${Date.now()}` : undefined);
 const store = new NutritionStore(databaseName);
-const syncManager = new SyncManager(store, {
-  onStatus: status => { updateSyncStatus(status).catch(() => {}); },
-  onChanges: changes => { handleRemoteChanges(changes).catch(() => {}); },
-  onAuthRequired: redirectToLogin
-});
 const todayKey = localDateKey();
 let deferredInstallPrompt = null;
 let pendingImport = null;
@@ -88,21 +82,13 @@ async function init() {
     await reloadState();
     await ensureActiveBackgroundTheme();
     bindEvents();
-    store.subscribe(() => {
-      if (!isTestMode) {
-        updateSyncStatus({ state: 'pending' }).catch(() => {});
-        syncManager.sync().catch(() => {});
-      }
-    });
     populateFoodCategories();
     syncProfileForm();
     syncWeightForm();
     syncBackgroundForm();
     applyBackground(state.settings);
-    renderAccount();
     renderRoute('today');
     document.documentElement.dataset.appReady = 'true';
-    if (!isTestMode) syncManager.start();
     if (isTestMode) window.__nutritionAtlas = { store, state, renderRoute, reloadState };
     if (!isTestMode && 'serviceWorker' in navigator) {
       navigator.serviceWorker.register('./sw.js').catch(() => {});
@@ -113,156 +99,6 @@ async function init() {
   }
 }
 
-async function handleRemoteChanges(changes) {
-  await reloadState();
-  populateFoodCategories();
-  syncProfileForm();
-  syncWeightForm();
-  syncBackgroundForm();
-  applyBackground(state.settings);
-  renderAccount();
-  renderRoute(state.route);
-  showToast(`已同步 ${changes.length} 项来自其他设备的更新`);
-}
-
-async function updateSyncStatus(status) {
-  const stateName = status?.state || 'idle';
-  const labels = {
-    idle: '等待同步',
-    pending: '等待上传',
-    syncing: '正在同步',
-    synced: '已同步',
-    error: '同步失败',
-    'auth-required': '登录已过期'
-  };
-  const label = labels[stateName] || labels.idle;
-  const statusElement = $('#account-sync-status');
-  const statusText = $('#account-sync-status-text');
-  const detail = $('#account-sync-detail');
-  const brandStatus = $('#brand-auth-status');
-  if (!statusElement || !statusText || !detail || !brandStatus) return;
-  statusElement.dataset.state = stateName;
-  statusText.textContent = label;
-  brandStatus.textContent = stateName === 'synced' ? '已登录 · 数据已同步' : `已登录 · ${label}`;
-
-  try {
-    const pending = (await store.getOutbox()).length;
-    if (stateName === 'synced') {
-      detail.textContent = pending ? `已上传，仍有 ${pending} 项等待处理。` : '两台设备已使用同一份云端数据。';
-    } else if (stateName === 'error') {
-      detail.textContent = status.error?.message || '网络异常，本地数据不会丢失。';
-    } else if (stateName === 'pending') {
-      detail.textContent = `有 ${pending} 项本地修改等待上传。`;
-    } else {
-      detail.textContent = pending ? `${pending} 项修改等待上传。` : '正在检查云端数据。';
-    }
-  } catch {
-    detail.textContent = '本地数据会在联网后自动同步。';
-  }
-}
-
-function redirectToLogin() {
-  const next = `${window.location.pathname}${window.location.search}`;
-  window.location.assign(`/login.html?next=${encodeURIComponent(next)}`);
-}
-
-async function logout() {
-  try {
-    await fetch('/api/logout', { method: 'POST', credentials: 'same-origin' });
-  } finally {
-    window.location.assign('/login.html');
-  }
-}
-
-function renderAccount() {
-  const nickname = String(state.profile?.nickname || '').trim() || '量子冰淇淋';
-  const avatarData = state.profile?.avatarData || '';
-  const nicknameElement = $('#brand-nickname');
-  const nicknameInput = $('#account-nickname');
-  if (nicknameElement) nicknameElement.textContent = nickname;
-  if (nicknameInput) nicknameInput.value = nickname;
-
-  for (const selector of ['#brand-avatar', '#account-avatar']) {
-    const image = $(selector);
-    if (!image) continue;
-    image.hidden = !avatarData;
-    image.src = avatarData || '';
-  }
-  for (const selector of ['#brand-avatar-fallback', '#account-avatar-fallback']) {
-    const fallback = $(selector);
-    if (!fallback) continue;
-    fallback.hidden = Boolean(avatarData);
-    fallback.textContent = nickname.slice(0, 1);
-  }
-}
-
-async function handleNicknameSubmit(event) {
-  event.preventDefault();
-  const input = $('#account-nickname');
-  const nickname = String(input?.value || '').trim() || '量子冰淇淋';
-  if (nickname.length > 24) {
-    showToast('昵称不能超过 24 个字符。', 'error');
-    return;
-  }
-  state.profile = await store.saveProfile({ ...(state.profile || {}), nickname });
-  renderAccount();
-  showToast('昵称已保存并加入同步队列');
-}
-
-async function handleAvatarFile(event) {
-  const file = event.target.files?.[0];
-  event.target.value = '';
-  if (!file) return;
-  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-    showToast('请选择 JPG、PNG 或 WebP 图片。', 'error');
-    return;
-  }
-  if (file.size > 8 * 1024 * 1024) {
-    showToast('头像原图不能超过 8MB。', 'error');
-    return;
-  }
-  try {
-    const objectUrl = URL.createObjectURL(file);
-    const image = await loadImageSource(objectUrl, true);
-    const avatarData = await createAvatarDataUrl(image);
-    state.profile = await store.saveProfile({ ...(state.profile || {}), avatarData });
-    renderAccount();
-    showToast('头像已保存并加入同步队列');
-  } catch (error) {
-    showToast(`头像保存失败：${error.message}`, 'error');
-  }
-}
-
-async function createAvatarDataUrl(image) {
-  const sizes = [
-    { size: 256, quality: 0.84 },
-    { size: 200, quality: 0.76 },
-    { size: 160, quality: 0.7 }
-  ];
-  let result = '';
-  for (const item of sizes) {
-    const canvas = document.createElement('canvas');
-    canvas.width = item.size;
-    canvas.height = item.size;
-    const context = canvas.getContext('2d');
-    const sourceSize = Math.min(image.naturalWidth, image.naturalHeight);
-    const sourceX = (image.naturalWidth - sourceSize) / 2;
-    const sourceY = (image.naturalHeight - sourceSize) / 2;
-    context.drawImage(image, sourceX, sourceY, sourceSize, sourceSize, 0, 0, item.size, item.size);
-    result = canvas.toDataURL('image/webp', item.quality);
-    if (!result.startsWith('data:image/webp')) result = canvas.toDataURL('image/jpeg', item.quality);
-    if (result.length <= 600_000) break;
-  }
-  if (!result || result.length > 850_000) throw new Error('图片仍然过大，请选择更简单的头像');
-  return result;
-}
-
-async function removeAvatar() {
-  if (!state.profile?.avatarData) return;
-  state.profile = await store.saveProfile({ ...state.profile, avatarData: null });
-  renderAccount();
-  showToast('头像已移除');
-}
 async function reloadState() {
   const [profile, foods, weights, entries, workouts, settings] = await Promise.all([
     store.getProfile(),
@@ -297,7 +133,8 @@ function bindEvents() {
   $('#food-search').addEventListener('input', renderFoodList);
   $('#food-category-filter').addEventListener('change', renderFoodList);
   $('#food-source-filter').addEventListener('change', renderFoodList);
-  $('#food-form').addEventListener('submit', handleFoodSubmit);
+  $('#food-form').addEventListener('submit', handleFoodSubmit);  $('#food-kcal').addEventListener('input', renderFoodEnergyConversion);
+  $('#food-energy-unit').addEventListener('change', handleFoodEnergyUnitChange);
   $('#add-food-button').addEventListener('click', () => openFoodDialog());
 
   $('#entry-food-search').addEventListener('input', event => renderEntryFoodResults(event.target.value));
@@ -307,7 +144,7 @@ function bindEvents() {
 
 
   $('#workout-type').addEventListener('change', updateWorkoutFormFields);
-  $('#workout-form').addEventListener('submit', handleWorkoutSubmit);  $('#maintenance-form').addEventListener('submit', handleMaintenanceSubmit);  $('#profile-form').addEventListener('input', handleProfileInput);
+  $('#workout-form').addEventListener('submit', handleWorkoutSubmit);  $('#maintenance-form').addEventListener('submit', handleMaintenanceSubmit);  $$('[data-nutrient-toggle]').forEach(input => input.addEventListener('change', handleOptionalNutrientToggle));  $('#profile-form').addEventListener('input', handleProfileInput);
   $('#profile-form').addEventListener('submit', handleProfileSubmit);
   $('#weight-form').addEventListener('submit', handleWeightSubmit);
   $('#history-range').addEventListener('change', renderHistory);
@@ -316,12 +153,6 @@ function bindEvents() {
   $('#import-file').addEventListener('change', prepareImport);
   $('#confirm-import').addEventListener('click', confirmImport);
   $('#reset-data').addEventListener('click', resetAllData);
-  $('#account-button').addEventListener('click', () => openDialog('#account-dialog'));
-  $('#account-name-form').addEventListener('submit', handleNicknameSubmit);
-  $('#avatar-file').addEventListener('change', handleAvatarFile);
-  $('#remove-avatar').addEventListener('click', removeAvatar);
-  $('#sync-now').addEventListener('click', () => syncManager.sync().catch(() => {}));
-  $('#logout-button').addEventListener('click', logout);
 
   $('#background-type').addEventListener('change', handleBackgroundChange);
   $('#background-color').addEventListener('input', debounce(handleBackgroundChange, 120));
@@ -387,12 +218,35 @@ function renderRoute(route, maintainFocus = false) {
   if (maintainFocus) $('#main-content').focus({ preventScroll: true });
 }
 
+function formatCalorieDifference(value) {
+  if (value === null || !Number.isFinite(Number(value))) return '—';
+  const numeric = Number(value);
+  return `${numeric > 0 ? '+' : ''}${formatNumber(numeric, 0)} kcal`;
+}
+function macroCalories(targets) {
+  return Number(targets?.carbs || 0) * 4 + Number(targets?.protein || 0) * 4 + Number(targets?.fat || 0) * 9;
+}
+function getMacroTargetsForProfile(profile, weightKg, calorieTarget) {
+  if (!profile) return null;
+  if (profile.macroTargetMode === 'weight') {
+    if (!(weightKg > 0)) return null;
+    const multipliers = profile.macroMultipliers || {};
+    return {
+      carbs: weightKg * Number(multipliers.carbs || 0),
+      protein: weightKg * Number(multipliers.protein || 0),
+      fat: weightKg * Number(multipliers.fat || 0)
+    };
+  }
+  return calorieTarget ? calculateMacroTargets(calorieTarget, profile.macroRatios) : null;
+}
 function renderToday() {
   const entries = entriesForDate(state.selectedDate);
   const totals = sumEntries(entries);
-  const metabolism = getMetabolism(state.profile, latestWeight()?.weightKg);
-  const goal = Number(state.profile?.maintenanceCalories) > 0 ? Number(state.profile.maintenanceCalories) : null;
-  const macroTargets = goal ? calculateMacroTargets(goal, state.profile.macroRatios) : null;
+  const weightKg = latestWeight()?.weightKg;
+  const metabolism = getMetabolism(state.profile, weightKg);
+  const manualGoal = Number(state.profile?.maintenanceCalories) > 0 ? Number(state.profile.maintenanceCalories) : null;
+  const macroTargets = getMacroTargetsForProfile(state.profile, weightKg, manualGoal);
+  const goal = state.profile?.macroTargetMode === 'weight' && macroTargets ? macroCalories(macroTargets) : manualGoal;
   updateDateControls();
   updateDailyDashboard({ totals, goal, macroTargets, metabolism });
   renderMeals(entries);
@@ -432,10 +286,15 @@ function groupWorkouts(workouts) {
 function renderWorkoutTypeSections(groups, compact = false) {
   return [
     { type: 'strength', label: '力量训练' },
-    { type: 'cardio', label: '有氧训练' }
+    { type: 'cardio', label: '有氧训练' },
+    { type: 'rest', label: '休息日' }
   ].map(section => {
     const sectionGroups = groups.filter(group => group.type === section.type);
     if (!sectionGroups.length) return '';
+    if (section.type === 'rest') {
+      const restWorkout = sectionGroups[0].items[0];
+      return `<section class="rest-day-display" data-workout-type="rest"><strong>休息日</strong><button class="icon-button danger-icon" type="button" data-delete-workout="${escapeHtml(restWorkout.id)}" aria-label="删除休息日记录"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M9 7V4h6v3m2 0-1 13H8L7 7"/></svg></button></section>`;
+    }
     return `<section class="workout-type-section" data-workout-type="${section.type}">
       <header><h3>${section.label}</h3><span>${sectionGroups.reduce((sum, group) => sum + group.items.length, 0)} 条</span></header>
       <div class="workout-type-groups">${sectionGroups.map(group => workoutGroupMarkup(group, compact)).join('')}</div>
@@ -455,7 +314,9 @@ function workoutGroupMarkup(group, compact = false) {
           const repsText = workout.repsExpression || formatNumber(workout.reps, 0);
           const detail = workout.type === 'strength'
             ? `${weightText}kg　${formatNumber(workout.sets, 0)}组 × ${repsText}次`
-            : `${formatWorkoutNumber(workout.durationMinutes)}分钟`;
+            : workout.type === 'cardio'
+              ? `${formatWorkoutNumber(workout.durationMinutes)}分钟`
+              : '休息与恢复';
           return `<div class="workout-set-row"><span class="workout-set-index">第${index + 1}组</span><strong>${detail}</strong><button class="icon-button danger-icon" type="button" data-delete-workout="${escapeHtml(workout.id)}" aria-label="删除 ${escapeHtml(workout.name)} 记录"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M9 7V4h6v3m2 0-1 13H8L7 7m3 4v5m4-5v5"/></svg></button></div>`;
         }).join('')}
       </div>
@@ -464,7 +325,7 @@ function workoutGroupMarkup(group, compact = false) {
 
 function renderWorkoutHistory() {
   const range = new Set(createDateRange(todayKey, 30));
-  const recent = state.workouts.filter(item => range.has(item.date));
+  const recent = state.workouts.filter(item => range.has(item.date)).sort((first, second) => second.date.localeCompare(first.date) || String(first.createdAt).localeCompare(String(second.createdAt)));
   const grouped = new Map();
   recent.forEach(item => {
     if (!grouped.has(item.date)) grouped.set(item.date, []);
@@ -475,21 +336,28 @@ function renderWorkoutHistory() {
     const items = grouped.get(date);
     const strength = items.filter(item => item.type === 'strength');
     const cardio = items.filter(item => item.type === 'cardio');
+    const rest = items.filter(item => item.type === 'rest');
     const summary = [
       strength.length ? `${strength.reduce((sum, item) => sum + Number(item.sets || 0), 0)} 组力量` : '',
       cardio.length ? `${formatNumber(cardio.reduce((sum, item) => sum + Number(item.durationMinutes || 0), 0), 0)} 分钟有氧` : ''
     ].filter(Boolean).join(' · ');
-    return `<section class="workout-history-day"><header><strong>${formatDateLabel(date)}</strong><span>${summary}</span></header>${renderWorkoutTypeSections(groupWorkouts(items), true)}</section>`;
+    return `<section class="workout-history-day" data-date="${escapeHtml(date)}"><header><strong>${formatDateLabel(date)}</strong><span>${summary}</span></header>${renderWorkoutTypeSections(groupWorkouts(items), true)}</section>`;
   }).join('') : '<p class="empty-inline">近 30 天还没有训练记录。</p>';
 }
 function updateWorkoutFormFields() {
-  const isStrength = $('#workout-type').value === 'strength';
+  const type = $('#workout-type').value;
+  const isStrength = type === 'strength';
+  const isCardio = type === 'cardio';
+  const isRest = type === 'rest';
+  $('#workout-name-field').hidden = isRest;
   $('#workout-strength-fields').hidden = !isStrength;
-  $('#workout-cardio-fields').hidden = isStrength;
+  $('#workout-cardio-fields').hidden = !isCardio;
+  $('#workout-name').required = !isRest;
   $('#workout-weight').required = isStrength;
   $('#workout-sets').required = isStrength;
   $('#workout-reps').required = isStrength;
-  $('#workout-minutes').required = !isStrength;
+  $('#workout-minutes').required = isCardio;
+  $('#workout-submit-button').textContent = isRest ? '记录为休息日' : '添加到今日训练';
 }
 
 function parseWorkoutExpression(value, allowZero = false) {
@@ -503,6 +371,20 @@ function parseWorkoutExpression(value, allowZero = false) {
 async function handleWorkoutSubmit(event) {
   event.preventDefault();
   const type = $('#workout-type').value;
+  if (type === 'rest') {
+    if (state.workouts.some(item => item.date === state.selectedDate && item.type === 'rest')) {
+      showToast('今天已经记录为休息日');
+      return;
+    }
+    const restRecord = await store.saveWorkout({ date: state.selectedDate, type: 'rest', name: '休息日' });
+    state.workouts.push(restRecord);
+    $('#workout-form').reset();
+    $('#workout-sets').value = 1;
+    $('#workout-type').value = 'rest';
+    renderWorkout();
+    showToast('已记录为休息日');
+    return;
+  }
   const name = $('#workout-name').value.trim();
   if (!name) return setFormError('#workout-form-error', '请输入运动名称。');
   let workout;
@@ -552,6 +434,8 @@ function updateDailyDashboard({ totals, goal, macroTargets, metabolism }) {
   $('#summary-goal').textContent = goal ? `${formatNumber(goal, 0)} kcal` : '—';
   const remaining = goal ? goal - totals.kcal : null;
   $('#summary-remaining').textContent = remaining === null ? '—' : `${formatNumber(remaining, 0)} kcal`;
+  const theoreticalSurplus = metabolism.complete && goal ? goal - metabolism.tdee : null;
+  $('#summary-theoretical-surplus').textContent = formatCalorieDifference(theoreticalSurplus);
   const calorieRatio = goal ? totals.kcal / goal : 0;
   $('#calorie-progress-bar').style.width = `${clamp(calorieRatio * 100, 0, 100)}%`;
 
@@ -569,6 +453,24 @@ function updateDailyDashboard({ totals, goal, macroTargets, metabolism }) {
     $(percentSelector).textContent = target ? `${formatNumber(ratio * 100, 0)}%` : '—';
   }
 
+  const optionalNutrients = [
+    { key: 'fiber', target: 25, unit: 'g', digits: 1 },
+    { key: 'sodium', target: 2000, unit: 'mg', digits: 0 },
+    { key: 'potassium', target: 3510, unit: 'mg', digits: 0 }
+  ];
+  for (const item of optionalNutrients) {
+    const visible = Boolean(state.settings.nutrientVisibility?.[item.key]);
+    const row = $(`[data-nutrient-row="${item.key}"]`);
+    row.hidden = !visible;
+    const input = $(`#nutrient-toggle-${item.key}`);
+    if (input) input.checked = visible;
+    if (!visible) continue;
+    const value = totals[item.key] || 0;
+    const ratio = item.target ? value / item.target : 0;
+    $(`#nutrient-${item.key}-total`).textContent = `${formatNumber(value, item.digits)} / ${formatNumber(item.target, 0)} ${item.unit}`;
+    $(`#nutrient-${item.key}-bar`).style.width = `${clamp(ratio * 100, 0, 100)}%`;
+    $(`#nutrient-${item.key}-percent`).textContent = `${formatNumber(ratio * 100, 0)}%`;
+  }
   const status = $('#goal-status');
   if (!metabolism.complete) {
     status.textContent = '等待资料';
@@ -582,6 +484,15 @@ function updateDailyDashboard({ totals, goal, macroTargets, metabolism }) {
     status.dataset.state = progress > 1.1 ? 'over' : 'good';
   }
   $('#profile-hint').hidden = metabolism.complete;
+}
+async function handleOptionalNutrientToggle(event) {
+  const key = event.target.dataset.nutrientToggle;
+  state.settings.nutrientVisibility = {
+    ...(state.settings.nutrientVisibility || {}),
+    [key]: event.target.checked
+  };
+  state.settings = await store.saveSettings(state.settings);
+  renderToday();
 }
 function renderMeals(entries) {
   const groups = groupEntriesByMeal(entries);
@@ -628,7 +539,7 @@ function renderMeals(entries) {
             <strong class="food-kcal">${formatNumber(food.per100g.kcal, 0)} kcal</strong>
           </div>
           <p class="food-meta">${escapeHtml(food.state)} · ${food.custom ? '我的食物' : '内置参考值'}${food.servingGrams ? ` · ${escapeHtml(food.servingLabel || '1份')} = ${formatNumber(food.servingGrams, 1)}g` : ''}</p>
-          <p class="food-macros">每 100g：碳 ${formatNumber(food.per100g.carbs, 1)} · 蛋 ${formatNumber(food.per100g.protein, 1)} · 脂 ${formatNumber(food.per100g.fat, 1)}</p>
+          <p class="food-macros">每 100g：碳 ${formatNumber(food.per100g.carbs, 1)} · 蛋 ${formatNumber(food.per100g.protein, 1)} · 脂 ${formatNumber(food.per100g.fat, 1)} · 纤 ${formatNumber(food.per100g.fiber || 0, 1)} · 钠 ${formatNumber(food.per100g.sodium || 0, 1)} · 钾 ${formatNumber(food.per100g.potassium || 0, 1)}</p>
         </div>
       </div>
       <div class="food-actions">
@@ -657,24 +568,64 @@ function openFoodDialog(food = null) {
   $('#food-aliases').value = (food?.aliases || []).filter(alias => !/^[a-z]+$/i.test(alias)).join('，');
   $('#food-serving-label').value = food?.servingLabel || '1份';
   $('#food-serving-grams').value = food?.servingGrams ?? '';
+  $('#food-energy-unit').value = 'kcal';
+  $('#food-energy-unit').dataset.previousUnit = 'kcal';
   $('#food-kcal').value = food?.per100g.kcal ?? '';
+  renderFoodEnergyConversion();
   $('#food-carbs').value = food?.per100g.carbs ?? '';
   $('#food-protein').value = food?.per100g.protein ?? '';
   $('#food-fat').value = food?.per100g.fat ?? '';
+  $('#food-fiber').value = food?.per100g.fiber ?? '';
+  $('#food-sodium').value = food?.per100g.sodium ?? '';
+  $('#food-potassium').value = food?.per100g.potassium ?? '';
   $('#food-dialog-title').textContent = food ? '复制并编辑食物' : '添加食物';
   setFormError('#food-form-error', '');
   openDialog('#food-dialog');
   setTimeout(() => $('#food-name').focus(), 0);
 }
 
+function convertFoodEnergy(value, fromUnit, toUnit) {
+  if (!Number.isFinite(value)) return null;
+  if (fromUnit === toUnit) return value;
+  return fromUnit === 'kJ' ? value / 4.184 : value * 4.184;
+}
+
+function renderFoodEnergyConversion() {
+  const value = Number($('#food-kcal').value);
+  const unit = $('#food-energy-unit').value;
+  if (!Number.isFinite(value) || value < 0) {
+    $('#food-kcal-converted').textContent = '';
+    return;
+  }
+  $('#food-kcal-converted').textContent = unit === 'kJ'
+    ? `≈ ${formatNumber(value / 4.184, 1)} kcal / 100g`
+    : '按 kcal / 100g 保存';
+}
+
+function handleFoodEnergyUnitChange() {
+  const select = $('#food-energy-unit');
+  const previousUnit = select.dataset.previousUnit || 'kcal';
+  const nextUnit = select.value;
+  const currentValue = Number($('#food-kcal').value);
+  if (previousUnit !== nextUnit && Number.isFinite(currentValue)) {
+    $('#food-kcal').value = formatNumber(convertFoodEnergy(currentValue, previousUnit, nextUnit), 2).replaceAll(',', '');
+  }
+  select.dataset.previousUnit = nextUnit;
+  renderFoodEnergyConversion();
+}
 async function handleFoodSubmit(event) {
   event.preventDefault();
   const name = $('#food-name').value.trim();
+  const enteredEnergy = Number($('#food-kcal').value);
+  const energyUnit = $('#food-energy-unit').value;
   const nutrients = {
-    kcal: Number($('#food-kcal').value),
+    kcal: energyUnit === 'kJ' ? enteredEnergy / 4.184 : enteredEnergy,
     carbs: Number($('#food-carbs').value),
     protein: Number($('#food-protein').value),
-    fat: Number($('#food-fat').value)
+    fat: Number($('#food-fat').value),
+    fiber: Number($('#food-fiber').value) || 0,
+    sodium: Number($('#food-sodium').value) || 0,
+    potassium: Number($('#food-potassium').value) || 0
   };
   if (!name) return setFormError('#food-form-error', '请输入食物名称。');
   if (Object.values(nutrients).some(value => !Number.isFinite(value) || value < 0)) {
@@ -847,6 +798,11 @@ function syncProfileForm() {
   $('#macro-carbs').value = ratios.carbs;
   $('#macro-protein').value = ratios.protein;
   $('#macro-fat').value = ratios.fat;
+  const multipliers = profile.macroMultipliers || { carbs: 1.5, protein: 1.5, fat: 1 };
+  $('#macro-target-mode').value = profile.macroTargetMode || 'ratio';
+  $('#macro-carbs-multiplier').value = multipliers.carbs;
+  $('#macro-protein-multiplier').value = multipliers.protein;
+  $('#macro-fat-multiplier').value = multipliers.fat;
   updateMacroOutputs();
 }
 function handleProfileInput(event) {
@@ -855,11 +811,14 @@ function handleProfileInput(event) {
 }
 
 function updateMacroOutputs() {
+  const mode = $('#macro-target-mode').value;
+  $('#macro-ratio-fields').hidden = mode !== 'ratio';
+  $('#macro-weight-fields').hidden = mode !== 'weight';
   const ratios = readMacroRatios();
   const validation = validateMacroRatios(ratios);
   $('#macro-ratio-total').textContent = `${formatNumber(validation.total, 0)}%`;
   $('#macro-ratio-total').dataset.valid = String(validation.valid);
-  setFormError('#macro-ratio-error', validation.valid ? '' : validation.message);
+  setFormError('#macro-ratio-error', mode === 'ratio' && !validation.valid ? validation.message : '');
   return ratios;
 }
 
@@ -876,12 +835,18 @@ function readProfileForm(includeWeight = true) {
   const heightCm = Number($('#profile-height').value);
   const weightKg = includeWeight ? Number($('#profile-weight').value) : latestWeight()?.weightKg;
   const activityMultiplier = Number($('#profile-activity-multiplier').value);
+  const macroTargetMode = $('#macro-target-mode').value;
   return {
     sex: $('#profile-sex').value,
     age: Number.isFinite(age) && age > 0 ? age : null,
     heightCm: Number.isFinite(heightCm) && heightCm > 0 ? heightCm : null,
     weightKg: Number.isFinite(weightKg) && weightKg > 0 ? weightKg : null,
-    activityMultiplierOverride: Number.isFinite(activityMultiplier) ? clamp(activityMultiplier, 1.2, 2.1) : 1.2,
+    activityMultiplierOverride: Number.isFinite(activityMultiplier) ? clamp(activityMultiplier, 1.2, 2.1) : 1.2,    macroTargetMode,
+    macroMultipliers: {
+      carbs: Number($('#macro-carbs-multiplier').value),
+      protein: Number($('#macro-protein-multiplier').value),
+      fat: Number($('#macro-fat-multiplier').value)
+    },
     macroRatios: readMacroRatios()
   };
 }
@@ -889,10 +854,12 @@ async function handleProfileSubmit(event) {
   event.preventDefault();
   const profile = readProfileForm();
   const validation = validateMacroRatios(profile.macroRatios);
+  const invalidMultipliers = Object.values(profile.macroMultipliers).some(value => !Number.isFinite(value) || value <= 0);
   if (!profile.age || !profile.heightCm || !profile.weightKg) {
     return showToast('请补全年龄、身高和体重。', 'error');
   }
-  if (!validation.valid) return setFormError('#macro-ratio-error', validation.message);
+  if (profile.macroTargetMode === 'ratio' && !validation.valid) return setFormError('#macro-ratio-error', validation.message);
+  if (profile.macroTargetMode === 'weight' && invalidMultipliers) return setFormError('#macro-ratio-error', '请填写有效的体重倍数。');
   const { weightKg, ...profileData } = profile;
   profileData.maintenanceCalories = state.profile?.maintenanceCalories ?? null;
   state.profile = await store.saveProfile(profileData);
@@ -901,7 +868,7 @@ async function handleProfileSubmit(event) {
   state.weights = await store.getWeights();
   renderProfile();
   renderToday();
-  showToast('个人资料、维持热量目标与体重已保存');
+  showToast('个人资料、目标热量与体重已保存');
 }
 
 function syncWeightForm() {
@@ -917,7 +884,7 @@ async function handleMaintenanceSubmit(event) {
   state.profile = await store.saveProfile({ ...(state.profile || {}), maintenanceCalories });
   renderMetabolism();
   renderToday();
-  showToast(maintenanceCalories ? '维持热量目标已保存' : '维持热量目标已清除');
+  showToast(maintenanceCalories ? '目标热量已保存' : '目标热量已清除');
 }
 async function handleWeightSubmit(event) {
   event.preventDefault();
@@ -948,9 +915,11 @@ function renderMetabolism(profileOverride = null) {
   $('#metric-bmr').textContent = metabolism.complete ? `${formatNumber(metabolism.bmr, 0)} kcal` : '—';
   $('#metric-tdee').textContent = metabolism.complete ? `${formatNumber(metabolism.tdee, 0)} kcal` : '—';
   const manualGoal = Number(profile?.maintenanceCalories);
-  $('#metric-goal').textContent = Number.isFinite(manualGoal) && manualGoal > 0 ? `${formatNumber(manualGoal, 0)} kcal` : '—';
+  const macroTargets = getMacroTargetsForProfile(profile, weight, manualGoal);
+  const displayGoal = profile?.macroTargetMode === 'weight' && macroTargets ? macroCalories(macroTargets) : manualGoal;
+  $('#metric-goal').textContent = Number.isFinite(displayGoal) && displayGoal > 0 ? `${formatNumber(displayGoal, 0)} kcal` : '—';
   $('#activity-explanation').textContent = metabolism.complete
-    ? `BMR × ${metabolism.multiplier.toFixed(2)} = ${formatNumber(metabolism.tdee, 0)} kcal；维持热量目标由你手动填写。`
+    ? `BMR × ${metabolism.multiplier.toFixed(2)} = ${formatNumber(metabolism.tdee, 0)} kcal；目标热量由你手动填写。`
     : '完善年龄、身高、体重和活动信息后显示估算依据。';
 }
 

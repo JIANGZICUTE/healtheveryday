@@ -55,7 +55,10 @@ export function scaleNutrition(per100g, grams) {
     kcal: Number(per100g.kcal || 0) * factor,
     carbs: Number(per100g.carbs || 0) * factor,
     protein: Number(per100g.protein || 0) * factor,
-    fat: Number(per100g.fat || 0) * factor
+    fat: Number(per100g.fat || 0) * factor,
+    fiber: Number(per100g.fiber || 0) * factor,
+    sodium: Number(per100g.sodium || 0) * factor,
+    potassium: Number(per100g.potassium || 0) * factor
   };
 }
 
@@ -75,8 +78,11 @@ export function sumEntries(entries) {
     totals.carbs += Number(nutrients.carbs) || 0;
     totals.protein += Number(nutrients.protein) || 0;
     totals.fat += Number(nutrients.fat) || 0;
+    totals.fiber += Number(nutrients.fiber) || 0;
+    totals.sodium += Number(nutrients.sodium) || 0;
+    totals.potassium += Number(nutrients.potassium) || 0;
     return totals;
-  }, { kcal: 0, carbs: 0, protein: 0, fat: 0 });
+  }, { kcal: 0, carbs: 0, protein: 0, fat: 0, fiber: 0, sodium: 0, potassium: 0 });
 }
 
 function clamp(value, min, max) {

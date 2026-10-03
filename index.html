@@ -8,7 +8,7 @@
   <title>每日营养图谱</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=17">
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <a class="skip-link" href="#main-content">跳到主要内容</a>
@@ -22,16 +22,15 @@
   <div class="app-shell">
     <aside class="sidebar" aria-label="主导航">
       <div class="brand">
-        <button class="brand-account" id="account-button" type="button" aria-haspopup="dialog" aria-controls="account-dialog">
-          <span class="brand-avatar" aria-hidden="true">
-            <img id="brand-avatar" alt="" hidden>
-            <span id="brand-avatar-fallback">量</span>
-          </span>
-          <span class="brand-copy">
-            <span class="brand-name" id="brand-nickname">量子冰淇淋</span>
-            <span class="brand-subtitle" id="brand-auth-status">已登录 · 等待同步</span>
-          </span>
-        </button>
+        <svg class="brand-mark" viewBox="0 0 48 48" aria-hidden="true">
+          <path d="M24 5c10.5 0 19 8.2 19 18.3S34.5 43 24 43 5 39.3 5 29.2 13.5 5 24 5Z" fill="none" stroke="currentColor" stroke-width="2.4"/>
+          <path d="M15 25c4.8-.4 8.3-2.4 10.6-6.1 2.1 5.2 6.6 8 13.1 8.3-3.1 6.8-8.4 10.2-15.9 10.2S16.1 34 15 25Z" fill="currentColor" opacity=".18"/>
+          <path d="M24 8.5v29M9.2 23.3h29.6" stroke="currentColor" stroke-width="1.2" opacity=".55"/>
+        </svg>
+        <div>
+          <p class="brand-name">量子冰淇淋</p>
+          
+        </div>
       </div>
 
       <nav class="primary-nav">
@@ -100,12 +99,20 @@
             <div class="metric-strip overview-metrics">
               <div><span>目标</span><strong id="summary-goal">—</strong></div>
               <div><span>剩余</span><strong id="summary-remaining">—</strong></div>
+              <div><span>理论热量盈余</span><strong id="summary-theoretical-surplus">—</strong></div>
             </div>
             <div class="plate-calorie-track"><div class="progress-track"><span id="calorie-progress-bar"></span></div></div>
-            <p class="profile-hint" id="profile-hint" hidden>完善身高、年龄、体重和活动信息后，可显示每日维持热量目标。<button type="button" data-route="profile">完善资料</button></p>
+            <p class="profile-hint" id="profile-hint" hidden>完善身高、年龄、体重和活动信息后，可显示每日目标热量。<button type="button" data-route="profile">完善资料</button></p>
           </section>
           <section class="today-macro-side" aria-label="今日宏量营养素摄入">
-            <div class="today-macro-heading"><div><p class="section-label">营养素摄入</p><h3>碳水、蛋白质与脂肪</h3></div></div>
+            <div class="today-macro-heading">
+              <div><p class="section-label">营养素摄入</p></div>
+              <div class="optional-nutrient-toggles" aria-label="可选营养素">
+                <label><input id="nutrient-toggle-fiber" type="checkbox" data-nutrient-toggle="fiber">膳食纤维</label>
+                <label><input id="nutrient-toggle-sodium" type="checkbox" data-nutrient-toggle="sodium">钠</label>
+                <label><input id="nutrient-toggle-potassium" type="checkbox" data-nutrient-toggle="potassium">钾</label>
+              </div>
+            </div>
             <div class="plate-macro-board">
               <div class="plate-macro-item" data-plate-macro="carbs">
                 <div class="plate-macro-heading"><span><i class="dot carbs"></i>碳水</span><strong id="plate-carbs-total">0 / — g</strong></div>
@@ -118,6 +125,17 @@
               <div class="plate-macro-item" data-plate-macro="fat">
                 <div class="plate-macro-heading"><span><i class="dot fat"></i>脂肪</span><strong id="plate-fat-total">0 / — g</strong></div>
                 <div class="progress-track"><span id="plate-fat-bar"></span></div><small id="plate-fat-percent">0%</small>
+              </div>              <div class="plate-macro-item optional-nutrient-row" data-nutrient-row="fiber" hidden>
+                <div class="plate-macro-heading"><span><i class="dot fiber"></i>膳食纤维</span><strong id="nutrient-fiber-total">0 / 25 g</strong></div>
+                <div class="progress-track"><span id="nutrient-fiber-bar"></span></div><small id="nutrient-fiber-percent">0%</small>
+              </div>
+              <div class="plate-macro-item optional-nutrient-row" data-nutrient-row="sodium" hidden>
+                <div class="plate-macro-heading"><span><i class="dot sodium"></i>钠</span><strong id="nutrient-sodium-total">0 / 2000 mg</strong></div>
+                <div class="progress-track"><span id="nutrient-sodium-bar"></span></div><small id="nutrient-sodium-percent">0%</small>
+              </div>
+              <div class="plate-macro-item optional-nutrient-row" data-nutrient-row="potassium" hidden>
+                <div class="plate-macro-heading"><span><i class="dot potassium"></i>钾</span><strong id="nutrient-potassium-total">0 / 3510 mg</strong></div>
+                <div class="progress-track"><span id="nutrient-potassium-bar"></span></div><small id="nutrient-potassium-percent">0%</small>
               </div>
             </div>
           </section>
@@ -141,9 +159,9 @@
             <div class="form-section-heading"><h3>添加一项训练</h3><p>每次可记录一组或一段有氧</p></div>
             <div class="form-grid two">
               <label>训练类型
-                <select id="workout-type"><option value="strength">力量训练</option><option value="cardio">有氧训练</option></select>
+                <select id="workout-type"><option value="strength">力量训练</option><option value="cardio">有氧训练</option><option value="rest">休息日</option></select>
               </label>
-              <label>运动名称
+              <label id="workout-name-field">运动名称
                 <input id="workout-name" type="text" placeholder="例如：卧推、深蹲、有氧爬坡" required>
               </label>
             </div>
@@ -159,7 +177,7 @@
               <label>运动时长（分钟）<input id="workout-minutes" type="number" min="0.1" max="1440" step="0.1" inputmode="decimal" required></label>
             </div>
             <p class="form-error" id="workout-form-error" role="alert" hidden></p>
-            <div class="form-actions"><button class="primary-button" type="submit">添加到今日训练</button></div>
+            <div class="form-actions"><button class="primary-button" id="workout-submit-button" type="submit">添加到今日训练</button></div>
           </form>
         </div>
         <article class="workout-record-panel">
@@ -264,16 +282,16 @@
               </div>
             </div>
             <div class="metabolism-metric accent goal">
-              <span>维持热量目标</span>
+              <span>目标热量</span>
               <strong id="metric-goal">—</strong>
               <small>由你手动填写</small>
             </div>
             <form class="maintenance-form" id="maintenance-form">
-              <label>维持热量目标（kcal，可选）
+              <label>目标热量（kcal，可选）
                 <input id="profile-maintenance-calories" type="number" min="500" max="10000" step="1" inputmode="numeric" placeholder="可以先计算，再填写">
               </label>
               <small>不填写也不影响 BMR 和 TDEE 计算，可随时单独保存。</small>
-              <button class="secondary-button" id="save-maintenance-goal" type="submit">保存维持目标</button>
+              <button class="secondary-button" id="save-maintenance-goal" type="submit">保存目标热量</button>
             </form>            <p class="activity-explanation" id="activity-explanation">完善年龄、身高、体重和活动信息后显示估算依据。</p>
           </aside>
 
@@ -299,13 +317,30 @@
               <input id="profile-activity-multiplier" type="number" min="1.2" max="2.1" step="0.01" inputmode="decimal" value="1.2" required>
               <small class="form-help">常见范围：久坐约 1.20，轻度活动约 1.375，中度活动约 1.55，高度活动约 1.725。</small>
             </label>
-            <div class="form-section-heading"><h3>宏量目标比例</h3><p>三项合计必须为 100%</p></div>
-            <div class="macro-input-grid">
-              <label>碳水（%）<input id="macro-carbs" type="number" min="0" max="100" step="1" inputmode="numeric" value="45" required></label>
-              <label>蛋白质（%）<input id="macro-protein" type="number" min="0" max="100" step="1" inputmode="numeric" value="25" required></label>
-              <label>脂肪（%）<input id="macro-fat" type="number" min="0" max="100" step="1" inputmode="numeric" value="30" required></label>
+            <div class="form-section-heading macro-section-heading">
+              <div class="macro-section-title">
+                <h3 id="macro-section-title">营养素摄入量</h3>
+                <select id="macro-target-mode" aria-label="营养素计算方式">
+                  <option value="ratio">按热量比例</option>
+                  <option value="weight">按体重倍数</option>
+                </select>
+              </div>
             </div>
-            <p class="macro-ratio-total">合计 <strong id="macro-ratio-total">100%</strong></p>
+            <div id="macro-ratio-fields">
+              <div class="macro-input-grid">
+                <label>碳水（%）<input id="macro-carbs" type="number" min="0" max="100" step="1" inputmode="numeric" value="45" required></label>
+                <label>蛋白质（%）<input id="macro-protein" type="number" min="0" max="100" step="1" inputmode="numeric" value="25" required></label>
+                <label>脂肪（%）<input id="macro-fat" type="number" min="0" max="100" step="1" inputmode="numeric" value="30" required></label>
+              </div>
+              <p class="macro-ratio-total">合计 <strong id="macro-ratio-total">100%</strong></p>
+            </div>
+            <div id="macro-weight-fields" hidden>
+              <div class="macro-input-grid">
+                <label>碳水（g/kg）<input id="macro-carbs-multiplier" type="number" min="0" step="0.1" inputmode="decimal" value="1.5" required></label>
+                <label>蛋白质（g/kg）<input id="macro-protein-multiplier" type="number" min="0" step="0.1" inputmode="decimal" value="1.5" required></label>
+                <label>脂肪（g/kg）<input id="macro-fat-multiplier" type="number" min="0" step="0.1" inputmode="decimal" value="1" required></label>
+              </div>
+            </div>
             <p class="form-error" id="macro-ratio-error" role="alert" hidden></p>
             <div class="form-actions">
               <button class="primary-button" type="submit">保存资料并计算</button>
@@ -405,7 +440,7 @@
   <dialog class="app-dialog" id="food-dialog" aria-labelledby="food-dialog-title">
     <form class="dialog-card" id="food-form" novalidate>
       <div class="dialog-heading">
-        <div><p class="section-label">每 100g 营养值</p><h2 id="food-dialog-title">添加食物</h2></div>
+        <div><h2 id="food-dialog-title">添加食物</h2></div>
         <button class="icon-button" type="button" data-close-dialog="food-dialog" aria-label="关闭"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
       </div>
       <input id="food-id" type="hidden">
@@ -416,10 +451,14 @@
         <label>别名或拼音<input id="food-aliases" type="text" placeholder="用逗号分隔"></label>
         <label>一份名称<input id="food-serving-label" type="text" maxlength="16" placeholder="例如：1份、1个、1碗"></label>
         <label>一份重量（g）<input id="food-serving-grams" type="number" min="0.1" step="0.1" inputmode="decimal" placeholder="例如：50"></label>
-        <label>热量（kcal）<input id="food-kcal" type="number" min="0" step="0.1" inputmode="decimal" required></label>
+        <label class="form-grid-span nutrition-section-label">每 100g 营养值</label>
+        <label><span class="field-label">热量（<select class="energy-unit-inline" id="food-energy-unit" aria-label="热量单位"><option value="kcal">kcal</option><option value="kJ">kJ</option></select> / 100g）</span><input id="food-kcal" type="number" min="0" step="0.1" inputmode="decimal" required><small id="food-kcal-converted" hidden></small></label>
         <label>碳水（g）<input id="food-carbs" type="number" min="0" step="0.1" inputmode="decimal" required></label>
         <label>蛋白质（g）<input id="food-protein" type="number" min="0" step="0.1" inputmode="decimal" required></label>
         <label>脂肪（g）<input id="food-fat" type="number" min="0" step="0.1" inputmode="decimal" required></label>
+        <label>膳食纤维（g）<input id="food-fiber" type="number" min="0" step="0.1" inputmode="decimal"></label>
+        <label>钠（mg）<input id="food-sodium" type="number" min="0" step="0.1" inputmode="decimal"></label>
+        <label>钾（mg）<input id="food-potassium" type="number" min="0" step="0.1" inputmode="decimal"></label>
       </div>
       <p class="form-error" id="food-form-error" role="alert" hidden></p>
       <div class="dialog-actions">
@@ -513,45 +552,8 @@
       </div>
     </div>
   </dialog>
-  <dialog class="app-dialog" id="account-dialog" aria-labelledby="account-dialog-title">
-    <div class="dialog-card account-dialog-card">
-      <div class="dialog-heading">
-        <div><p class="section-label">私人账号</p><h2 id="account-dialog-title">量子冰淇淋</h2></div>
-        <button class="icon-button" type="button" data-close-dialog="account-dialog" aria-label="关闭"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
-      </div>
-      <div class="account-profile">
-        <div class="account-avatar-large" aria-hidden="true">
-          <img id="account-avatar" alt="" hidden>
-          <span id="account-avatar-fallback">量</span>
-        </div>
-        <div class="account-profile-copy">
-          <h3>头像与昵称</h3>
-          <p>头像会压缩保存；昵称显示在侧栏头像后面。两项都会同步到另一台设备。</p>
-          <form class="account-name-form" id="account-name-form">
-            <label for="account-nickname">昵称</label>
-            <div>
-              <input id="account-nickname" name="nickname" maxlength="24" autocomplete="nickname" placeholder="量子冰淇淋">
-              <button class="secondary-button" type="submit">保存昵称</button>
-            </div>
-          </form>
-          <div class="account-avatar-actions">
-            <label class="secondary-button file-button">更换头像<input id="avatar-file" type="file" accept="image/png,image/jpeg,image/webp"></label>
-            <button class="quiet-button" id="remove-avatar" type="button">移除头像</button>
-          </div>
-        </div>
-      </div>
-      <div class="account-sync-row">
-        <span class="sync-status" id="account-sync-status" data-state="idle"><span class="sync-dot" aria-hidden="true"></span><span id="account-sync-status-text">等待同步</span></span>
-        <span class="account-sync-detail" id="account-sync-detail">本地数据会在联网后自动同步。</span>
-      </div>
-      <div class="dialog-actions">
-        <button class="quiet-button" id="logout-button" type="button">退出登录</button>
-        <button class="primary-button" id="sync-now" type="button">立即同步</button>
-      </div>
-    </div>
-  </dialog>
   <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="true"></div>
 
-  <script type="module" src="js/app.js?v=17"></script>
+  <script type="module" src="js/app.js"></script>
 </body>
 </html>
