@@ -1,21 +1,26 @@
-const CACHE_NAME = 'nutrition-atlas-v15-patch7';
+﻿const CACHE_NAME = 'nutrition-atlas-v17-sync';
 const APP_SHELL = [
-  './',
-  './index.html',
-  './styles.css',
-  './manifest.webmanifest',
-  './icon.svg',
-  './js/app.js',
-  './js/calculations.js',
-  './js/charts.js',
-  './js/foods.js',
-  './js/store.js',
-  './js/utils.js',
-  './js/theme.js'
+  './index.html?v=17',
+  './styles.css?v=17',
+  './manifest.webmanifest?v=17',
+  './icon.svg?v=17',
+  './js/app.js?v=17',
+  './js/calculations.js?v=17',
+  './js/charts.js?v=17',
+  './js/foods.js?v=17',
+  './js/store.js?db=3',
+  './js/sync-core.js?v=17',
+  './js/sync-manager.js?v=17',
+  './js/utils.js?v=17',
+  './js/theme.js?v=17'
 ];
 
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(APP_SHELL)).then(() => self.skipWaiting()));
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then(cache => cache.addAll(APP_SHELL.map(url => new Request(url, { cache: 'reload' }))))
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener('activate', event => {
@@ -29,28 +34,17 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') return;
   const requestUrl = new URL(event.request.url);
-  if (requestUrl.origin !== self.location.origin) return;
-
-  if (event.request.mode === 'navigate') {
-    event.respondWith(
-      fetch(event.request)
-        .then(response => {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put('./index.html', copy));
-          return response;
-        })
-        .catch(() => caches.match('./index.html'))
-    );
-    return;
-  }
+  if (requestUrl.origin !== self.location.origin || requestUrl.pathname.startsWith('/api/')) return;
 
   event.respondWith(
-    caches.match(event.request).then(cached => cached || fetch(event.request).then(response => {
-      if (response.ok) {
-        const copy = response.clone();
-        caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
-      }
-      return response;
-    }))
+    fetch(event.request, { cache: 'no-cache' })
+      .then(response => {
+        if (response.ok && !['/login', '/login.html', '/repair.html'].includes(new URL(response.url).pathname)) {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
+        }
+        return response;
+      })
+      .catch(() => caches.match(event.request).then(cached => cached || caches.match('./index.html?v=17')))
   );
 });

@@ -1,0 +1,15 @@
+name = "lzbql1health"
+compatibility_date = "2026-09-26"
+pages_build_output_dir = "."
+
+[[d1_databases]]
+binding = "SYNC_DB"
+database_name = "nutrition-atlas-sync"
+database_id = "81a92b34-56cf-43e3-9559-7b2b00f53a8b"
+
+[vars]
+APP_ENV = "production"
+
+# Secrets are configured in Cloudflare Pages, not committed to this file:
+# APP_PASSWORD   - the password entered on the login page
+# SESSION_SECRET - a random 64-character hexadecimal signing secret
