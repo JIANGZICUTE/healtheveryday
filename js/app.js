@@ -1,4 +1,4 @@
-﻿import { NutritionStore, DEFAULT_SETTINGS } from './store.js?db=3';
+import { NutritionStore, DEFAULT_SETTINGS } from './store.js?db=3';
 import { SyncManager } from './sync-manager.js?v=17';
 import { FOOD_LIBRARY, searchFoods } from './foods.js';
 import {
@@ -40,6 +40,9 @@ const todayKey = localDateKey();
 let deferredInstallPrompt = null;
 let pendingImport = null;
 let pendingBackgroundUpload = null;
+let backgroundLibrarySignature = '';
+let backgroundPreviewSignature = '';
+let backgroundLibraryObserver = null;
 const backgroundCropEditor = {
   naturalWidth: 0,
   naturalHeight: 0,
@@ -1159,7 +1162,6 @@ function toggleHistoryTable() {
   $('#history-table-wrap').hidden = expanded;
 }function renderAppearance() {
   syncBackgroundForm();
-  applyBackground(state.settings);
 }
 
 function syncBackgroundForm() {
@@ -1173,17 +1175,24 @@ function syncBackgroundForm() {
   $('#background-dim').value = background.dim ?? 10;
   $('#panel-opacity').value = Math.round(getEffectivePanelOpacity(background) * 100);  $('#sidebar-opacity').value = Math.round(clamp(background.sidebarOpacity ?? 1, 0, 1) * 100);
 
-  const hasImage = Boolean(background.imageData);
+  const hasImage = typeof background.imageData === 'string' && background.imageData.length > 0;
+  const activeImage = hasImage ? getActiveBackgroundImage(background) : null;
+  const cropStyle = hasImage ? calculateBackgroundCropStyle(activeImage?.crop || background.crop) : null;
+  const previewSignature = hasImage
+    ? [background.imageId || '', background.imageName || '', background.imageData.length, cropStyle.backgroundSize, cropStyle.backgroundPosition].join(':')
+    : 'none';
   $('#background-image-preview').hidden = !hasImage;
-  $('#background-image-thumbnail').style.backgroundImage = hasImage ? `url("${background.imageData}")` : 'none';
-  if (hasImage) {
-    const cropStyle = calculateBackgroundCropStyle(getActiveBackgroundImage(background)?.crop || background.crop);
-    $('#background-image-thumbnail').style.backgroundSize = cropStyle.backgroundSize;
-    $('#background-image-thumbnail').style.backgroundPosition = cropStyle.backgroundPosition;
+  if (previewSignature !== backgroundPreviewSignature) {
+    backgroundPreviewSignature = previewSignature;
+    $('#background-image-thumbnail').style.backgroundImage = hasImage ? `url("${background.imageData}")` : 'none';
+    if (cropStyle) {
+      $('#background-image-thumbnail').style.backgroundSize = cropStyle.backgroundSize;
+      $('#background-image-thumbnail').style.backgroundPosition = cropStyle.backgroundPosition;
+    }
   }
   $('#background-image-name').textContent = background.imageName || '已保存在当前浏览器';
   $('#background-image-drop').classList.toggle('has-image', hasImage);
-  renderBackgroundLibrary(background);
+  if (state.route === 'appearance') renderBackgroundLibrary(background);
   syncThemeControls(background);
   updateBackgroundControlVisibility(background.type);
   updateRangeOutputs();
@@ -1632,8 +1641,21 @@ function renderBackgroundLibrary(background) {
   const images = Array.isArray(background.images) ? background.images : [];
   const library = $('#background-library');
   const grid = $('#background-library-grid');
+  const signature = `${background.imageId || ''}|${images.map(image => {
+    const crop = image.crop || {};
+    return [image.id, image.name, image.data.length, crop.ratio, crop.scale ?? crop.zoom, crop.offsetX ?? crop.x, crop.offsetY ?? crop.y].join(':');
+  }).join('|')}`;
+
   library.hidden = images.length === 0;
   $('#background-image-count').textContent = `${images.length} 张`;
+
+  if (signature === backgroundLibrarySignature && grid.childElementCount === images.length) return;
+  backgroundLibrarySignature = signature;
+  if (backgroundLibraryObserver) {
+    backgroundLibraryObserver.disconnect();
+    backgroundLibraryObserver = null;
+  }
+
   grid.innerHTML = images.map(image => `
     <article class="background-library-item">
       <button type="button" class="background-library-choice" data-background-image-id="${escapeHtml(image.id)}"${background.imageId === image.id ? ' data-current="true"' : ''}>
@@ -1643,14 +1665,30 @@ function renderBackgroundLibrary(background) {
       <button type="button" class="danger-text-button" data-delete-background-image-id="${escapeHtml(image.id)}">删除</button>
     </article>
   `).join('');
-  for (const image of images) {
-    const thumbnail = grid.querySelector(`[data-background-thumb="${CSS.escape(image.id)}"]`);
-    if (thumbnail) {
-      const cropStyle = calculateBackgroundCropStyle(image.crop);
-      thumbnail.style.backgroundImage = `url("${image.data}")`;
-      thumbnail.style.backgroundSize = cropStyle.backgroundSize;
-      thumbnail.style.backgroundPosition = cropStyle.backgroundPosition;
-    }
+
+  if (!images.length) return;
+
+  const imageById = new Map(images.map(image => [image.id, image]));
+  const hydrateThumbnail = thumbnail => {
+    const image = imageById.get(thumbnail.dataset.backgroundThumb);
+    if (!image || thumbnail.style.backgroundImage) return;
+    const cropStyle = calculateBackgroundCropStyle(image.crop);
+    thumbnail.style.backgroundImage = `url("${image.data}")`;
+    thumbnail.style.backgroundSize = cropStyle.backgroundSize;
+    thumbnail.style.backgroundPosition = cropStyle.backgroundPosition;
+  };
+
+  if ('IntersectionObserver' in window) {
+    backgroundLibraryObserver = new IntersectionObserver(entries => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        hydrateThumbnail(entry.target);
+        backgroundLibraryObserver?.unobserve(entry.target);
+      }
+    }, { rootMargin: '240px 0px' });
+    grid.querySelectorAll('[data-background-thumb]').forEach(thumbnail => backgroundLibraryObserver.observe(thumbnail));
+  } else {
+    setTimeout(() => grid.querySelectorAll('[data-background-thumb]').forEach(hydrateThumbnail), 0);
   }
 }
 

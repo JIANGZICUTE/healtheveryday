@@ -1,10 +1,10 @@
-const CACHE_NAME = 'nutrition-atlas-v20-anime-gallery-fixed';
+const CACHE_NAME = 'nutrition-atlas-v21-appearance-perf';
 const APP_SHELL = [
   './index.html?v=17',
   './styles.css?v=19',
   './manifest.webmanifest?v=17',
   './icon.svg?v=17',
-  './js/app.js?v=17',
+  './js/app.js?v=20',
   './js/calculations.js?v=17',
   './js/charts.js?v=17',
   './js/foods.js?v=17',
