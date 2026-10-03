@@ -39,7 +39,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
     crop: null,
     blur: 0,
     dim: 10,
-    panelOpacity: 88
+    panelOpacity: 88,
+    sidebarOpacity: 1
   },
   updatedAt: null
 });

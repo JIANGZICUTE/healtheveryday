@@ -335,7 +335,8 @@ function bindEvents() {
   $('#background-preset').addEventListener('change', handleBackgroundChange);
   $('#background-blur').addEventListener('input', handleBackgroundChange);
   $('#background-dim').addEventListener('input', handleBackgroundChange);
-  $('#panel-opacity').addEventListener('input', handlePanelOpacityChange);
+  $('#panel-opacity').addEventListener('input', handlePanelOpacityChange);  $('#sidebar-opacity').addEventListener('input', handleSidebarOpacityChange);
+
   $('#background-image-input').addEventListener('change', handleBackgroundImage);
   $('#background-crop-ratio').addEventListener('change', resetBackgroundCropEditor);
   $('#background-crop-zoom').addEventListener('input', updateBackgroundCropTransform);
@@ -1170,7 +1171,8 @@ function syncBackgroundForm() {
   $('#background-preset').value = background.preset || 'dawn';
   $('#background-blur').value = background.blur ?? 0;
   $('#background-dim').value = background.dim ?? 10;
-  $('#panel-opacity').value = Math.round(getEffectivePanelOpacity(background) * 100);
+  $('#panel-opacity').value = Math.round(getEffectivePanelOpacity(background) * 100);  $('#sidebar-opacity').value = Math.round(clamp(background.sidebarOpacity ?? 1, 0, 1) * 100);
+
   const hasImage = Boolean(background.imageData);
   $('#background-image-preview').hidden = !hasImage;
   $('#background-image-thumbnail').style.backgroundImage = hasImage ? `url("${background.imageData}")` : 'none';
@@ -1300,6 +1302,8 @@ function updateRangeOutputs() {
   $('#background-blur-output').textContent = `${$('#background-blur').value}px`;
   $('#background-dim-output').textContent = `${$('#background-dim').value}%`;
   $('#panel-opacity-output').textContent = `${$('#panel-opacity').value}%`;
+  $('#sidebar-opacity-output').textContent = `${$('#sidebar-opacity').value}%`;
+
 }
 
 function applyBackground(settings) {
@@ -1313,6 +1317,8 @@ function applyBackground(settings) {
   root.style.setProperty('--user-bg-blur', `${background.blur ?? 0}px`);
   root.style.setProperty('--user-bg-dim', `${(background.dim ?? 10) / 100}`);
   root.style.setProperty('--panel-opacity', `${getEffectivePanelOpacity(background)}`);
+  root.style.setProperty('--sidebar-opacity', `${clamp(background.sidebarOpacity ?? 1, 0, 1)}`);
+
   document.body.dataset.backgroundType = background.type || 'gradient';
   $('#background-pattern').dataset.preset = background.preset || 'dawn';
   const cropStyle = calculateBackgroundCropStyle(activeImage?.crop || background.crop);
@@ -1342,6 +1348,16 @@ async function handlePanelOpacityChange(event) {
   persistBackground();
 }
 
+async function handleSidebarOpacityChange(event) {
+  const opacity = clamp(Number(event.target.value) / 100, 0, 1);
+  state.settings = {
+    ...state.settings,
+    background: { ...state.settings.background, sidebarOpacity: opacity }
+  };
+  applyBackground(state.settings);
+  updateRangeOutputs();
+  persistBackground();
+}
 async function handleThemeTextColor(event) {
   const image = getActiveBackgroundImage();
   if (!image?.theme) return;
