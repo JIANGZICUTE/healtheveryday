@@ -1317,7 +1317,7 @@ function applyBackground(settings) {
   $('#background-pattern').dataset.preset = background.preset || 'dawn';
   const cropStyle = calculateBackgroundCropStyle(activeImage?.crop || background.crop);
   $('#background-image').style.backgroundImage = background.imageData ? `url("${background.imageData}")` : 'none';
-  $('#background-image').style.backgroundSize = background.imageData ? cropStyle.backgroundSize : '';
+  $('#background-image').style.backgroundSize = background.imageData ? 'cover' : '';
   $('#background-image').style.backgroundPosition = background.imageData ? cropStyle.backgroundPosition : '';
   syncThemeControls(background);
 }

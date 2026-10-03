@@ -324,6 +324,7 @@ summary {
 .background-image {
   background-position: center;
   background-size: cover;
+  background-repeat: no-repeat;
   filter: blur(var(--user-bg-blur));
   transform: scale(1.06);
   transition: background-image 240ms ease, filter 160ms ease;
@@ -394,8 +395,7 @@ body[data-background-type="preset"] .background-pattern {
   width: var(--sidebar-width);
   padding: 28px 20px 22px;
   color: var(--theme-sidebar-text);
-  background:
-    linear-gradient(145deg, rgb(var(--theme-sidebar-rgb) / 0.82), rgb(var(--theme-sidebar-rgb) / 0.68));
+  background: var(--theme-sidebar);
   border-right: 1px solid rgb(255 255 255 / 0.2);
   box-shadow: inset -1px 0 0 rgb(var(--theme-sidebar-rgb) / 0.2), 18px 0 50px rgb(0 0 0 / 0.08);
   backdrop-filter: blur(26px) saturate(150%);
@@ -2951,7 +2951,7 @@ hr {
     width: 100%;
     height: auto;
     padding: 10px 16px;
-    background: rgb(var(--theme-sidebar-rgb) / 0.82);
+    background: var(--theme-sidebar);
     backdrop-filter: blur(16px);
   }
 
