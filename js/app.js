@@ -294,7 +294,8 @@ function bindEvents() {
   $('#date-next').addEventListener('click', () => changeSelectedDate(1));
   $('#today-date-button').addEventListener('click', () => {
     state.selectedDate = todayKey;
-    renderRoute('today');
+    if (state.route === 'workout') renderWorkout();
+    else renderRoute('today');
   });
 
   $('#food-search').addEventListener('input', renderFoodList);
@@ -432,7 +433,8 @@ function formatWorkoutNumber(value, digits = 1) {
 }
 function renderWorkout() {
   const workouts = state.workouts.filter(item => item.date === state.selectedDate);
-  $('#workout-date-label').textContent = `${state.selectedDate === todayKey ? '今天 · ' : ''}${formatDateLabel(state.selectedDate)}`;
+  updateDateControls();
+  $('#workout-date-label').textContent = `今天 · ${formatDateLabel(todayKey)}`;
   $('#workout-today-list').innerHTML = workouts.length
     ? renderWorkoutTypeSections(groupWorkouts(workouts))
     : '<p class="empty-inline">今天还没有训练记录，先添加一项训练。</p>';
