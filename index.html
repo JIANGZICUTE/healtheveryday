@@ -162,12 +162,12 @@
               <label>训练类型
                 <select id="workout-type"><option value="strength">力量训练</option><option value="cardio">有氧训练</option><option value="rest">休息日</option></select>
               </label>
-              <label id="workout-name-field">运动名称
-                <input id="workout-name" type="text" list="workout-name-options" placeholder="例如：卧推、深蹲、有氧爬坡" required>
+              <label id="workout-strength-group-field" hidden>力量分类
+                <input id="workout-strength-group" type="text" list="workout-strength-group-options" placeholder="例如：胸+肩膀、背+手臂、腿" autocomplete="off">
               </label>
             </div>
-            <label id="workout-strength-group-field" hidden>力量分类
-              <input id="workout-strength-group" type="text" list="workout-strength-group-options" placeholder="例如：胸+肩膀、背+手臂、腿" autocomplete="off">
+            <label id="workout-name-field">运动名称
+              <input id="workout-name" type="text" list="workout-name-options" placeholder="例如：卧推、深蹲、有氧爬坡" required>
             </label>
             <datalist id="workout-name-options"></datalist>
             <datalist id="workout-strength-group-options"></datalist><div class="form-grid three" id="workout-strength-fields">
@@ -594,6 +594,6 @@
   </dialog>
   <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="true"></div>
 
-  <script type="module" src="js/app.js?v=23"></script>
+  <script type="module" src="js/app.js?v=24"></script>
 </body>
 </html>

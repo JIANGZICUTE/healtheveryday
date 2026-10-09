@@ -330,7 +330,9 @@ function bindEvents() {
 
 $('#workout-type').addEventListener('change', updateWorkoutFormFields);
   $('#workout-name').addEventListener('input', handleWorkoutNameInput);
-  $('#workout-name').addEventListener('change', handleWorkoutNameInput);
+$('#workout-name').addEventListener('change', handleWorkoutNameInput);
+  $('#workout-strength-group').addEventListener('input', renderWorkoutNames);
+  $('#workout-strength-group').addEventListener('change', renderWorkoutNames);
   $('#workout-form').addEventListener('submit', handleWorkoutSubmit);  $('#maintenance-form').addEventListener('submit', handleMaintenanceSubmit);  $$('[data-nutrient-toggle]').forEach(input => input.addEventListener('change', handleOptionalNutrientToggle));  $('#profile-form').addEventListener('input', handleProfileInput);
   $('#macro-target-mode').addEventListener('change', updateMacroOutputs);
   $('#profile-form').addEventListener('submit', handleProfileSubmit);
@@ -474,7 +476,9 @@ function getWorkoutStrengthGroupNames() {
 
 function renderWorkoutNames() {
   const names = Array.isArray(state.settings.workoutNames) ? state.settings.workoutNames : [];
-  $('#workout-name-options').innerHTML = names
+  const selectedGroup = $('#workout-strength-group')?.value.trim() || '';
+  const visibleNames = selectedGroup ? names.filter(name => workoutNameGroup(name) === selectedGroup) : names;
+  $('#workout-name-options').innerHTML = visibleNames
     .map(name => `<option value="${escapeHtml(name)}" label="${escapeHtml(workoutNameGroup(name))}"></option>`)
     .join('');
   $('#workout-strength-group-options').innerHTML = getWorkoutStrengthGroupNames()
@@ -586,8 +590,9 @@ function handleWorkoutNameInput() {
   const names = Array.isArray(state.settings.workoutNames) ? state.settings.workoutNames : [];
   if (!names.includes(name)) return;
   state.selectedWorkoutName = name;
-  if ($('#workout-type').value === 'strength') {
+  if ($('#workout-type').value === 'strength' && !$('#workout-strength-group').value.trim()) {
     $('#workout-strength-group').value = workoutNameGroup(name);
+    renderWorkoutNames();
   }
 }
 
@@ -697,6 +702,7 @@ async function handleWorkoutSubmit(event) {
   $('#workout-form').reset();
   $('#workout-sets').value = 1;
   $('#workout-type').value = type;
+  if (type === 'strength') $('#workout-strength-group').value = strengthGroup;
   setFormError('#workout-form-error', '');
   renderWorkout();
   showToast(`${name} 已添加到训练记录`);
