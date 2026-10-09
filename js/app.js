@@ -1,4 +1,4 @@
-import { NutritionStore, DEFAULT_SETTINGS } from './store.js?db=3';
+import { NutritionStore, DEFAULT_SETTINGS } from './store.js?db=4';
 import { SyncManager } from './sync-manager.js?v=17';
 import { FOOD_LIBRARY, searchFoods } from './foods.js';
 import {
@@ -66,7 +66,8 @@ const state = {
   allEntries: [],
   workouts: [],
   settings: structuredClone(DEFAULT_SETTINGS),
-  selectedEntryFood: null
+  selectedEntryFood: null,
+  selectedWorkoutName: null
 };
 
 const routeMeta = {
@@ -266,6 +267,17 @@ async function removeAvatar() {
   renderAccount();
   showToast('头像已移除');
 }
+function normalizeWorkoutSettings(settings) {
+  const configuredGroups = Array.isArray(settings.workoutStrengthGroups)
+    ? settings.workoutStrengthGroups
+    : DEFAULT_SETTINGS.workoutStrengthGroups;
+  settings.workoutStrengthGroups = [...new Set(configuredGroups.map(group => String(group || '').trim()).filter(Boolean))];
+  settings.workoutNameGroups = settings.workoutNameGroups && typeof settings.workoutNameGroups === 'object'
+    ? { ...settings.workoutNameGroups }
+    : {};
+  if (!Array.isArray(settings.workoutNames) && settings.workoutNames !== null) settings.workoutNames = [];
+}
+
 async function reloadState() {
   const [profile, foods, weights, entries, workouts, settings] = await Promise.all([
     store.getProfile(),
@@ -280,9 +292,14 @@ async function reloadState() {
   state.weights = weights;
   state.allEntries = entries;
   state.workouts = workouts;
-  state.settings = ensureBackgroundLibrary(settings);
+state.settings = ensureBackgroundLibrary(settings);
+  normalizeWorkoutSettings(state.settings);
   if (state.settings.workoutNames === null) {
-    state.settings.workoutNames = [...new Set(state.workouts.map(workout => workout.name).filter(Boolean))];
+    const names = [...new Set(state.workouts.map(workout => workout.name).filter(Boolean))];
+    state.settings.workoutNames = names;
+    for (const name of names) {
+      if (!state.settings.workoutNameGroups[name]) state.settings.workoutNameGroups[name] = '未分类';
+    }
     state.settings = await store.saveSettings(state.settings);
   }
 }
@@ -311,7 +328,9 @@ function bindEvents() {
   $('#entry-form').addEventListener('submit', handleEntrySubmit);
 
 
-  $('#workout-type').addEventListener('change', updateWorkoutFormFields);
+$('#workout-type').addEventListener('change', updateWorkoutFormFields);
+  $('#workout-name').addEventListener('input', handleWorkoutNameInput);
+  $('#workout-name').addEventListener('change', handleWorkoutNameInput);
   $('#workout-form').addEventListener('submit', handleWorkoutSubmit);  $('#maintenance-form').addEventListener('submit', handleMaintenanceSubmit);  $$('[data-nutrient-toggle]').forEach(input => input.addEventListener('change', handleOptionalNutrientToggle));  $('#profile-form').addEventListener('input', handleProfileInput);
   $('#macro-target-mode').addEventListener('change', updateMacroOutputs);
   $('#profile-form').addEventListener('submit', handleProfileSubmit);
@@ -443,21 +462,56 @@ function renderWorkout() {
   updateWorkoutFormFields();
 }
 
+function workoutNameGroup(name) {
+  return state.settings.workoutNameGroups?.[name] || '未分类';
+}
+
+function getWorkoutStrengthGroupNames() {
+  const configured = Array.isArray(state.settings.workoutStrengthGroups) ? state.settings.workoutStrengthGroups : [];
+  const used = Object.values(state.settings.workoutNameGroups || {});
+  return [...new Set([...configured, ...used].map(group => String(group || '').trim()).filter(Boolean))];
+}
+
 function renderWorkoutNames() {
   const names = Array.isArray(state.settings.workoutNames) ? state.settings.workoutNames : [];
-  $('#workout-name-list').innerHTML = names.length
-    ? names.map(name => `<span class="workout-name-chip"><button type="button" data-workout-name="${escapeHtml(name)}">${escapeHtml(name)}</button><button type="button" class="workout-name-delete" data-delete-workout-name="${escapeHtml(name)}" aria-label="删除名称 ${escapeHtml(name)}">×</button></span>`).join('')
-    : '<small>添加训练后会在这里记住名称</small>';
+  $('#workout-name-options').innerHTML = names
+    .map(name => `<option value="${escapeHtml(name)}" label="${escapeHtml(workoutNameGroup(name))}"></option>`)
+    .join('');
+  $('#workout-strength-group-options').innerHTML = getWorkoutStrengthGroupNames()
+    .map(group => `<option value="${escapeHtml(group)}"></option>`)
+    .join('');
 }
 
 function groupWorkouts(workouts) {
   const groups = new Map();
   workouts.forEach(workout => {
-    const key = `${workout.type}::${workout.name}`;
-    if (!groups.has(key)) groups.set(key, { key, name: workout.name, type: workout.type, items: [] });
+    const strengthGroup = workout.type === 'strength'
+      ? (workout.strengthGroup || workoutNameGroup(workout.name))
+      : null;
+    const key = `${workout.type}::${strengthGroup || ''}::${workout.name}`;
+    if (!groups.has(key)) groups.set(key, { key, name: workout.name, type: workout.type, strengthGroup, items: [] });
     groups.get(key).items.push(workout);
   });
   return [...groups.values()];
+}
+
+function renderWorkoutStrengthCategories(groups, compact) {
+  const categories = new Map();
+  for (const group of groups) {
+    const category = group.strengthGroup || '未分类';
+    if (!categories.has(category)) categories.set(category, []);
+    categories.get(category).push(group);
+  }
+  const configured = Array.isArray(state.settings.workoutStrengthGroups) ? state.settings.workoutStrengthGroups : [];
+  const order = [...new Set([...configured, ...categories.keys()])];
+  return order.filter(category => categories.has(category)).map(category => {
+    const categoryGroups = categories.get(category);
+    const count = categoryGroups.reduce((sum, group) => sum + group.items.length, 0);
+    return `<section class="workout-strength-category">
+      <header><h4>${escapeHtml(category)}</h4><span>${count} 条</span></header>
+      <div class="workout-type-groups">${categoryGroups.map(group => workoutGroupMarkup(group, compact)).join('')}</div>
+    </section>`;
+  }).join('');
 }
 
 function renderWorkoutTypeSections(groups, compact = false) {
@@ -472,9 +526,12 @@ function renderWorkoutTypeSections(groups, compact = false) {
       const restWorkout = sectionGroups[0].items[0];
       return `<section class="rest-day-display" data-workout-type="rest"><strong>休息日</strong><button class="icon-button danger-icon" type="button" data-delete-workout="${escapeHtml(restWorkout.id)}" aria-label="删除休息日记录"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M9 7V4h6v3m2 0-1 13H8L7 7"/></svg></button></section>`;
     }
+    const groupsMarkup = section.type === 'strength'
+      ? renderWorkoutStrengthCategories(sectionGroups, compact)
+      : sectionGroups.map(group => workoutGroupMarkup(group, compact)).join('');
     return `<section class="workout-type-section" data-workout-type="${section.type}">
       <header><h3>${section.label}</h3><span>${sectionGroups.reduce((sum, group) => sum + group.items.length, 0)} 条</span></header>
-      <div class="workout-type-groups">${sectionGroups.map(group => workoutGroupMarkup(group, compact)).join('')}</div>
+      <div class="workout-type-groups">${groupsMarkup}</div>
     </section>`;
   }).join('');
 }
@@ -499,7 +556,6 @@ function workoutGroupMarkup(group, compact = false) {
       </div>
     </article>`;
 }
-
 function renderWorkoutHistory() {
   const range = new Set(createDateRange(todayKey, 30));
   const recent = state.workouts.filter(item => range.has(item.date)).sort((first, second) => second.date.localeCompare(first.date) || String(first.createdAt).localeCompare(String(second.createdAt)));
@@ -521,12 +577,27 @@ function renderWorkoutHistory() {
     return `<section class="workout-history-day" data-date="${escapeHtml(date)}"><header><strong>${formatDateLabel(date)}</strong><span>${summary}</span></header>${renderWorkoutTypeSections(groupWorkouts(items), true)}</section>`;
   }).join('') : '<p class="empty-inline">近 30 天还没有训练记录。</p>';
 }
+function handleWorkoutNameInput() {
+  const name = $('#workout-name').value.trim();
+  if (!name) {
+    state.selectedWorkoutName = null;
+    return;
+  }
+  const names = Array.isArray(state.settings.workoutNames) ? state.settings.workoutNames : [];
+  if (!names.includes(name)) return;
+  state.selectedWorkoutName = name;
+  if ($('#workout-type').value === 'strength') {
+    $('#workout-strength-group').value = workoutNameGroup(name);
+  }
+}
+
 function updateWorkoutFormFields() {
   const type = $('#workout-type').value;
   const isStrength = type === 'strength';
   const isCardio = type === 'cardio';
   const isRest = type === 'rest';
   $('#workout-name-field').hidden = isRest;
+  $('#workout-strength-group-field').hidden = !isStrength;
   $('#workout-strength-fields').hidden = !isStrength;
   $('#workout-cardio-fields').hidden = !isCardio;
   $('#workout-name').required = !isRest;
@@ -535,6 +606,7 @@ function updateWorkoutFormFields() {
   $('#workout-reps').required = isStrength;
   $('#workout-minutes').required = isCardio;
   $('#workout-submit-button').textContent = isRest ? '记录为休息日' : '添加到今日训练';
+  if (!isStrength) state.selectedWorkoutName = null;
 }
 
 function parseWorkoutExpression(value, allowZero = false) {
@@ -555,6 +627,7 @@ async function handleWorkoutSubmit(event) {
     }
     const restRecord = await store.saveWorkout({ date: state.selectedDate, type: 'rest', name: '休息日' });
     state.workouts.push(restRecord);
+    state.selectedWorkoutName = null;
     $('#workout-form').reset();
     $('#workout-sets').value = 1;
     $('#workout-type').value = 'rest';
@@ -562,9 +635,18 @@ async function handleWorkoutSubmit(event) {
     showToast('已记录为休息日');
     return;
   }
+
   const name = $('#workout-name').value.trim();
   if (!name) return setFormError('#workout-form-error', '请输入运动名称。');
+  const existingNames = Array.isArray(state.settings.workoutNames) ? state.settings.workoutNames : [];
+  const previousName = type === 'strength'
+    ? (state.selectedWorkoutName || (existingNames.includes(name) ? name : null))
+    : null;
+  const strengthGroup = type === 'strength'
+    ? ($('#workout-strength-group').value.trim() || '未分类')
+    : null;
   let workout;
+
   if (type === 'strength') {
     const weight = parseWorkoutExpression($('#workout-weight').value, true);
     const reps = parseWorkoutExpression($('#workout-reps').value);
@@ -574,6 +656,7 @@ async function handleWorkoutSubmit(event) {
       date: state.selectedDate,
       type,
       name,
+      strengthGroup,
       weightKg: weight.total,
       weightExpression: weight.text,
       sets,
@@ -585,21 +668,39 @@ async function handleWorkoutSubmit(event) {
     if (!(durationMinutes > 0)) return setFormError('#workout-form-error', '请输入有效的有氧运动时长。');
     workout = { date: state.selectedDate, type, name, durationMinutes };
   }
+
   const saved = await store.saveWorkout(workout);
-  state.workouts.push(saved);
-  const names = Array.isArray(state.settings.workoutNames) ? state.settings.workoutNames : [];
-  if (!names.includes(name)) {
-    state.settings.workoutNames = [...names, name];
-    state.settings = await store.saveSettings(state.settings);
+  const replacements = new Map();
+  if (type === 'strength' && previousName) {
+    for (const item of state.workouts) {
+      if (item.type !== 'strength' || item.name !== previousName) continue;
+      const updated = await store.saveWorkout({ ...item, name, strengthGroup });
+      replacements.set(item.id, updated);
+    }
   }
+  if (replacements.size) state.workouts = state.workouts.map(item => replacements.get(item.id) || item);
+  state.workouts.push(saved);
+
+  const names = new Set(existingNames);
+  if (previousName) names.delete(previousName);
+  names.add(name);
+  const nameGroups = { ...(state.settings.workoutNameGroups || {}) };
+  if (previousName) delete nameGroups[previousName];
+  if (type === 'strength') nameGroups[name] = strengthGroup;
+  const groups = [...new Set([...(state.settings.workoutStrengthGroups || []), ...(strengthGroup ? [strengthGroup] : [])])];
+  state.settings.workoutNames = [...names];
+  state.settings.workoutNameGroups = nameGroups;
+  state.settings.workoutStrengthGroups = groups;
+  state.settings = await store.saveSettings(state.settings);
+
+  state.selectedWorkoutName = null;
   $('#workout-form').reset();
   $('#workout-sets').value = 1;
   $('#workout-type').value = type;
   setFormError('#workout-form-error', '');
   renderWorkout();
   showToast(`${name} 已添加到训练记录`);
-}
-function updateDateControls() {
+}function updateDateControls() {
   const isToday = state.selectedDate === todayKey;
   $('#date-label').textContent = isToday ? `今天 · ${formatDateLabel(todayKey)}` : formatDateLabel(state.selectedDate);
   $('#date-next').disabled = state.selectedDate >= todayKey;
@@ -745,8 +846,9 @@ function openFoodDialog(food = null) {
   $('#food-aliases').value = (food?.aliases || []).filter(alias => !/^[a-z]+$/i.test(alias)).join('，');
   $('#food-serving-label').value = food?.servingLabel || '1份';
   $('#food-serving-grams').value = food?.servingGrams ?? '';
-  $('#food-energy-unit').value = 'kcal';
-  $('#food-energy-unit').dataset.previousUnit = 'kcal';
+  const defaultEnergyUnit = food ? 'kcal' : 'kJ';
+  $('#food-energy-unit').value = defaultEnergyUnit;
+  $('#food-energy-unit').dataset.previousUnit = defaultEnergyUnit;
   $('#food-kcal').value = food?.per100g.kcal ?? '';
   renderFoodEnergyConversion();
   $('#food-carbs').value = food?.per100g.carbs ?? '';
@@ -768,9 +870,10 @@ function convertFoodEnergy(value, fromUnit, toUnit) {
 }
 
 function renderFoodEnergyConversion() {
-  const value = Number($('#food-kcal').value);
+  const rawValue = $('#food-kcal').value.trim();
+  const value = Number(rawValue);
   const unit = $('#food-energy-unit').value;
-  if (!Number.isFinite(value) || value < 0) {
+  if (rawValue === '' || !Number.isFinite(value) || value < 0) {
     $('#food-kcal-converted').textContent = '';
     return;
   }
@@ -783,8 +886,9 @@ function handleFoodEnergyUnitChange() {
   const select = $('#food-energy-unit');
   const previousUnit = select.dataset.previousUnit || 'kcal';
   const nextUnit = select.value;
-  const currentValue = Number($('#food-kcal').value);
-  if (previousUnit !== nextUnit && Number.isFinite(currentValue)) {
+  const rawValue = $('#food-kcal').value.trim();
+  const currentValue = Number(rawValue);
+  if (previousUnit !== nextUnit && rawValue !== '' && Number.isFinite(currentValue) && currentValue >= 0) {
     $('#food-kcal').value = formatNumber(convertFoodEnergy(currentValue, previousUnit, nextUnit), 2).replaceAll(',', '');
   }
   select.dataset.previousUnit = nextUnit;
@@ -861,7 +965,12 @@ function updateEntryUnitControl() {
   const servingOption = $('#entry-unit').querySelector('option[value="serving"]');
   servingOption.disabled = !food?.servingGrams;
   if (!food?.servingGrams && $('#entry-unit').value === 'serving') $('#entry-unit').value = 'grams';
-  $('#entry-amount-label').textContent = $('#entry-unit').value === 'serving' ? '份数' : '重量（g）';
+  const usingServing = $('#entry-unit').value === 'serving';
+  const amountInput = $('#entry-amount');
+  amountInput.min = usingServing ? '1' : '0.1';
+  amountInput.step = usingServing ? '1' : '0.1';
+  if (usingServing && !(Number(amountInput.value) > 0)) amountInput.value = '1';
+  $('#entry-amount-label').textContent = usingServing ? '份数' : '重量（g）';
 }
 
 function entryAmountInGrams(amount, food = state.selectedEntryFood) {
@@ -1865,14 +1974,8 @@ async function handleBodyClick(event) {
   const deleteEntryButton = event.target.closest('[data-delete-entry]');
   if (deleteEntryButton) return deleteEntry(deleteEntryButton.dataset.deleteEntry);
   const deleteWeightButton = event.target.closest('[data-delete-weight]');
-  if (deleteWeightButton) return deleteWeight(deleteWeightButton.dataset.deleteWeight);  const workoutNameButton = event.target.closest('[data-workout-name]');
-  if (workoutNameButton) {
-    $('#workout-name').value = workoutNameButton.dataset.workoutName;
-    $('#workout-name').focus();
-    return;
-  }
-  const deleteWorkoutNameButton = event.target.closest('[data-delete-workout-name]');
-  if (deleteWorkoutNameButton) return deleteWorkoutName(deleteWorkoutNameButton.dataset.deleteWorkoutName);  const deleteWorkoutButton = event.target.closest('[data-delete-workout]');
+  if (deleteWeightButton) return deleteWeight(deleteWeightButton.dataset.deleteWeight);
+  const deleteWorkoutButton = event.target.closest('[data-delete-workout]');
   if (deleteWorkoutButton) return deleteWorkout(deleteWorkoutButton.dataset.deleteWorkout);
   const backgroundImageButton = event.target.closest('[data-background-image-id]');
   if (backgroundImageButton) return applyStoredBackgroundImage(backgroundImageButton.dataset.backgroundImageId);
@@ -1880,12 +1983,6 @@ async function handleBodyClick(event) {
   if (deleteBackgroundImageButton) return deleteStoredBackgroundImage(deleteBackgroundImageButton.dataset.deleteBackgroundImageId);
 }
 
-async function deleteWorkoutName(name) {
-  state.settings.workoutNames = (state.settings.workoutNames || []).filter(item => item !== name);
-  state.settings = await store.saveSettings(state.settings);
-  renderWorkoutNames();
-  showToast('已从常用名称中删除');
-}
 async function deleteWorkout(id) {
   if (!window.confirm('确定删除这条训练记录吗？')) return;
   await store.deleteWorkout(id);

@@ -8,7 +8,7 @@
   <title>每日营养图谱</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=19">
+  <link rel="stylesheet" href="styles.css?v=20">
 </head>
 <body>
   <a class="skip-link" href="#main-content">跳到主要内容</a>
@@ -163,13 +163,14 @@
                 <select id="workout-type"><option value="strength">力量训练</option><option value="cardio">有氧训练</option><option value="rest">休息日</option></select>
               </label>
               <label id="workout-name-field">运动名称
-                <input id="workout-name" type="text" placeholder="例如：卧推、深蹲、有氧爬坡" required>
+                <input id="workout-name" type="text" list="workout-name-options" placeholder="例如：卧推、深蹲、有氧爬坡" required>
               </label>
             </div>
-            <div class="workout-name-history" id="workout-name-history">
-              <span>已用名称</span>
-              <div class="workout-name-list" id="workout-name-list"></div>
-            </div>            <div class="form-grid three" id="workout-strength-fields">
+            <label id="workout-strength-group-field" hidden>力量分类
+              <input id="workout-strength-group" type="text" list="workout-strength-group-options" placeholder="例如：胸+肩膀、背+手臂、腿" autocomplete="off">
+            </label>
+            <datalist id="workout-name-options"></datalist>
+            <datalist id="workout-strength-group-options"></datalist><div class="form-grid three" id="workout-strength-fields">
               <label>重量（kg）<input id="workout-weight" type="text" inputmode="decimal" placeholder="例如：50 或 10+5" required></label>
               <label>组数<input id="workout-sets" type="number" min="1" max="100" step="1" inputmode="numeric" value="1" required></label>
               <label>每组个数<input id="workout-reps" type="text" inputmode="numeric" placeholder="例如：10 或 10+5" required></label>
@@ -593,6 +594,6 @@
   </dialog>
   <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="true"></div>
 
-  <script type="module" src="js/app.js?v=21"></script>
+  <script type="module" src="js/app.js?v=23"></script>
 </body>
 </html>

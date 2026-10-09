@@ -1,4 +1,4 @@
-﻿import { scaleNutrition } from './calculations.js';
+import { scaleNutrition } from './calculations.js';
 import { normalizeOperation, sanitizeSyncData } from './sync-core.js';
 
 const DB_NAME = 'nutrition-atlas';
@@ -25,6 +25,8 @@ const DATA_STORE_NAMES = Object.freeze([
 
 export const DEFAULT_SETTINGS = Object.freeze({
   workoutNames: null,
+  workoutStrengthGroups: ['胸+肩膀', '背+手臂', '腿'],
+  workoutNameGroups: {},
   foodSearchHistory: [],
   nutrientVisibility: { fiber: false, sodium: false, potassium: false },
   background: {

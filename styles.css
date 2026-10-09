@@ -4852,3 +4852,33 @@ textarea:hover {
 .nav-button:hover {
   transform: none;
 }
+/* Strength workout categories */
+#workout-strength-group-field {
+  margin: 12px 0 4px;
+}
+
+.workout-strength-category + .workout-strength-category {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.workout-strength-category > header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 4px 8px;
+}
+
+.workout-strength-category > header h4 {
+  margin: 0;
+  color: var(--leaf-deep);
+  font-size: 14px;
+  letter-spacing: 0.02em;
+}
+
+.workout-strength-category > header span {
+  color: var(--muted);
+  font-size: 11px;
+}
