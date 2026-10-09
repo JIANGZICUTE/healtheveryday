@@ -329,10 +329,12 @@ function bindEvents() {
 
 
 $('#workout-type').addEventListener('change', updateWorkoutFormFields);
-  $('#workout-name').addEventListener('input', handleWorkoutNameInput);
 $('#workout-name').addEventListener('change', handleWorkoutNameInput);
-  $('#workout-strength-group').addEventListener('input', renderWorkoutNames);
-  $('#workout-strength-group').addEventListener('change', renderWorkoutNames);
+  $('#workout-name-custom').addEventListener('input', handleWorkoutNameCustomInput);
+  $('#workout-strength-group').addEventListener('change', handleWorkoutStrengthGroupChange);
+  $('#workout-strength-group-custom').addEventListener('input', handleWorkoutStrengthGroupCustomInput);
+  $('#delete-workout-strength-group').addEventListener('click', deleteWorkoutStrengthGroupOption);
+  $('#delete-workout-name').addEventListener('click', deleteWorkoutNameOption);
   $('#workout-form').addEventListener('submit', handleWorkoutSubmit);  $('#maintenance-form').addEventListener('submit', handleMaintenanceSubmit);  $$('[data-nutrient-toggle]').forEach(input => input.addEventListener('change', handleOptionalNutrientToggle));  $('#profile-form').addEventListener('input', handleProfileInput);
   $('#macro-target-mode').addEventListener('change', updateMacroOutputs);
   $('#profile-form').addEventListener('submit', handleProfileSubmit);
@@ -471,19 +473,62 @@ function workoutNameGroup(name) {
 function getWorkoutStrengthGroupNames() {
   const configured = Array.isArray(state.settings.workoutStrengthGroups) ? state.settings.workoutStrengthGroups : [];
   const used = Object.values(state.settings.workoutNameGroups || {});
-  return [...new Set([...configured, ...used].map(group => String(group || '').trim()).filter(Boolean))];
+  return [...new Set([...configured, '未分类', ...used].map(group => String(group || '').trim()).filter(Boolean))];
+}
+
+function getWorkoutStrengthGroupValue() {
+  const select = $('#workout-strength-group');
+  if (!select) return '';
+  return select.value === '__custom__'
+    ? $('#workout-strength-group-custom').value.trim()
+    : select.value.trim();
+}
+
+function getWorkoutNameValue() {
+  const select = $('#workout-name');
+  if (!select) return '';
+  return select.value === '__custom__'
+    ? $('#workout-name-custom').value.trim()
+    : select.value.trim();
 }
 
 function renderWorkoutNames() {
   const names = Array.isArray(state.settings.workoutNames) ? state.settings.workoutNames : [];
-  const selectedGroup = $('#workout-strength-group')?.value.trim() || '';
+  const groupSelect = $('#workout-strength-group');
+  const groupCustomField = $('#workout-strength-group-custom-field');
+  const groupCustomInput = $('#workout-strength-group-custom');
+  const nameSelect = $('#workout-name');
+  const nameCustomField = $('#workout-name-custom-field');
+  const groupOptions = getWorkoutStrengthGroupNames();
+  const previousGroup = groupSelect.value;
+  const previousName = nameSelect.value;
+  const usingCustomGroup = previousGroup === '__custom__';
+  const selectedGroup = $('#workout-type').value === 'strength'
+    ? (usingCustomGroup ? groupCustomInput.value.trim() : previousGroup.trim())
+    : '';
   const visibleNames = selectedGroup ? names.filter(name => workoutNameGroup(name) === selectedGroup) : names;
-  $('#workout-name-options').innerHTML = visibleNames
-    .map(name => `<option value="${escapeHtml(name)}" label="${escapeHtml(workoutNameGroup(name))}"></option>`)
-    .join('');
-  $('#workout-strength-group-options').innerHTML = getWorkoutStrengthGroupNames()
-    .map(group => `<option value="${escapeHtml(group)}"></option>`)
-    .join('');
+
+  groupSelect.innerHTML = [
+    '<option value="">请选择力量分类</option>',
+    ...groupOptions.map(group => `<option value="${escapeHtml(group)}">${escapeHtml(group)}</option>`),
+    '<option value="__custom__">＋ 新建力量分类</option>'
+  ].join('');
+  groupSelect.value = previousGroup && (groupOptions.includes(previousGroup) || usingCustomGroup)
+    ? previousGroup
+    : '';
+  groupCustomField.hidden = groupSelect.value !== '__custom__';
+  $('#delete-workout-strength-group').hidden = !groupSelect.value || groupSelect.value === '__custom__' || groupSelect.value === '未分类';
+
+  nameSelect.innerHTML = [
+    '<option value="">请选择运动名称</option>',
+    ...visibleNames.map(name => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`),
+    '<option value="__custom__">＋ 新建运动名称</option>'
+  ].join('');
+  nameSelect.value = previousName && (visibleNames.includes(previousName) || previousName === '__custom__')
+    ? previousName
+    : '';
+  if (nameSelect.value !== '__custom__') nameCustomField.hidden = true;
+  $('#delete-workout-name').hidden = !nameSelect.value || nameSelect.value === '__custom__';
 }
 
 function groupWorkouts(workouts) {
@@ -581,19 +626,66 @@ function renderWorkoutHistory() {
     return `<section class="workout-history-day" data-date="${escapeHtml(date)}"><header><strong>${formatDateLabel(date)}</strong><span>${summary}</span></header>${renderWorkoutTypeSections(groupWorkouts(items), true)}</section>`;
   }).join('') : '<p class="empty-inline">近 30 天还没有训练记录。</p>';
 }
+function handleWorkoutStrengthGroupChange() {
+  const select = $('#workout-strength-group');
+  const customField = $('#workout-strength-group-custom-field');
+  const customInput = $('#workout-strength-group-custom');
+  const nameSelect = $('#workout-name');
+  customField.hidden = select.value !== '__custom__';
+  if (select.value === '__custom__') {
+    customInput.value = '';
+    nameSelect.value = '';
+    state.selectedWorkoutName = null;
+    $('#workout-name-custom-field').hidden = true;
+    renderWorkoutNames();
+    customInput.focus();
+    return;
+  }
+  customInput.value = '';
+  nameSelect.value = '';
+  state.selectedWorkoutName = null;
+  $('#workout-name-custom-field').hidden = true;
+  renderWorkoutNames();
+}
+
+function handleWorkoutStrengthGroupCustomInput() {
+  $('#workout-name').value = '';
+  $('#workout-name-custom-field').hidden = true;
+  state.selectedWorkoutName = null;
+  renderWorkoutNames();
+}
+
 function handleWorkoutNameInput() {
-  const name = $('#workout-name').value.trim();
+  const select = $('#workout-name');
+  const customField = $('#workout-name-custom-field');
+  const customInput = $('#workout-name-custom');
+  if (select.value === '__custom__') {
+    customField.hidden = false;
+    if (!customInput.value && state.selectedWorkoutName) customInput.value = state.selectedWorkoutName;
+    customInput.focus();
+    customInput.select();
+    return;
+  }
+  customField.hidden = true;
+  customInput.value = '';
+  const name = select.value.trim();
+  const names = Array.isArray(state.settings.workoutNames) ? state.settings.workoutNames : [];
+  state.selectedWorkoutName = names.includes(name) ? name : null;
+  if ($('#workout-type').value === 'strength' && !getWorkoutStrengthGroupValue() && state.selectedWorkoutName) {
+    const inferredGroup = workoutNameGroup(state.selectedWorkoutName);
+    if (inferredGroup !== '未分类') $('#workout-strength-group').value = inferredGroup;
+  }
+  renderWorkoutNames();
+}
+
+function handleWorkoutNameCustomInput() {
+  const name = $('#workout-name-custom').value.trim();
+  const names = Array.isArray(state.settings.workoutNames) ? state.settings.workoutNames : [];
   if (!name) {
     state.selectedWorkoutName = null;
     return;
   }
-  const names = Array.isArray(state.settings.workoutNames) ? state.settings.workoutNames : [];
-  if (!names.includes(name)) return;
-  state.selectedWorkoutName = name;
-  if ($('#workout-type').value === 'strength' && !$('#workout-strength-group').value.trim()) {
-    $('#workout-strength-group').value = workoutNameGroup(name);
-    renderWorkoutNames();
-  }
+  if (names.includes(name)) state.selectedWorkoutName = name;
 }
 
 function updateWorkoutFormFields() {
@@ -601,8 +693,11 @@ function updateWorkoutFormFields() {
   const isStrength = type === 'strength';
   const isCardio = type === 'cardio';
   const isRest = type === 'rest';
+  const groupCustomVisible = isStrength && $('#workout-strength-group').value === '__custom__';
   $('#workout-name-field').hidden = isRest;
   $('#workout-strength-group-field').hidden = !isStrength;
+  $('#workout-strength-group-custom-field').hidden = !groupCustomVisible;
+  if (isRest) $('#workout-name-custom-field').hidden = true;
   $('#workout-strength-fields').hidden = !isStrength;
   $('#workout-cardio-fields').hidden = !isCardio;
   $('#workout-name').required = !isRest;
@@ -612,6 +707,7 @@ function updateWorkoutFormFields() {
   $('#workout-minutes').required = isCardio;
   $('#workout-submit-button').textContent = isRest ? '记录为休息日' : '添加到今日训练';
   if (!isStrength) state.selectedWorkoutName = null;
+  renderWorkoutNames();
 }
 
 function parseWorkoutExpression(value, allowZero = false) {
@@ -641,14 +737,14 @@ async function handleWorkoutSubmit(event) {
     return;
   }
 
-  const name = $('#workout-name').value.trim();
+  const name = getWorkoutNameValue();
   if (!name) return setFormError('#workout-form-error', '请输入运动名称。');
   const existingNames = Array.isArray(state.settings.workoutNames) ? state.settings.workoutNames : [];
   const previousName = type === 'strength'
     ? (state.selectedWorkoutName || (existingNames.includes(name) ? name : null))
     : null;
-  const strengthGroup = type === 'strength'
-    ? ($('#workout-strength-group').value.trim() || '未分类')
+const strengthGroup = type === 'strength'
+    ? (getWorkoutStrengthGroupValue() || '未分类')
     : null;
   let workout;
 
@@ -699,9 +795,14 @@ async function handleWorkoutSubmit(event) {
   state.settings = await store.saveSettings(state.settings);
 
   state.selectedWorkoutName = null;
-  $('#workout-form').reset();
+$('#workout-form').reset();
   $('#workout-sets').value = 1;
   $('#workout-type').value = type;
+  $('#workout-strength-group-custom').value = '';
+  $('#workout-strength-group-custom-field').hidden = true;
+  $('#workout-name-custom').value = '';
+  $('#workout-name-custom-field').hidden = true;
+  renderWorkoutNames();
   if (type === 'strength') $('#workout-strength-group').value = strengthGroup;
   setFormError('#workout-form-error', '');
   renderWorkout();
@@ -1987,6 +2088,50 @@ async function handleBodyClick(event) {
   if (backgroundImageButton) return applyStoredBackgroundImage(backgroundImageButton.dataset.backgroundImageId);
   const deleteBackgroundImageButton = event.target.closest('[data-delete-background-image-id]');
   if (deleteBackgroundImageButton) return deleteStoredBackgroundImage(deleteBackgroundImageButton.dataset.deleteBackgroundImageId);
+}
+
+async function deleteWorkoutStrengthGroupOption() {
+  const group = $('#workout-strength-group').value.trim();
+  if (!group || group === '__custom__' || group === '未分类') return;
+  const nameGroups = { ...(state.settings.workoutNameGroups || {}) };
+  const affectedNames = new Set(Object.entries(nameGroups).filter(([, value]) => value === group).map(([name]) => name));
+  const replacements = new Map();
+  for (const item of state.workouts) {
+    if (item.type !== 'strength') continue;
+    const currentGroup = item.strengthGroup || workoutNameGroup(item.name);
+    if (currentGroup !== group) continue;
+    const updated = await store.saveWorkout({ ...item, strengthGroup: '未分类' });
+    replacements.set(item.id, updated);
+  }
+  if (replacements.size) state.workouts = state.workouts.map(item => replacements.get(item.id) || item);
+  for (const name of affectedNames) nameGroups[name] = '未分类';
+  state.settings.workoutStrengthGroups = (state.settings.workoutStrengthGroups || []).filter(item => item !== group);
+  state.settings.workoutNameGroups = nameGroups;
+  state.settings = await store.saveSettings(state.settings);
+  state.selectedWorkoutName = null;
+  $('#workout-name').value = '';
+  renderWorkout();
+}
+
+async function deleteWorkoutNameOption() {
+  const name = $('#workout-name').value.trim();
+  if (!name || name === '__custom__') return;
+  const group = workoutNameGroup(name);
+  const replacements = new Map();
+  for (const item of state.workouts) {
+    if (item.type !== 'strength' || item.name !== name || item.strengthGroup) continue;
+    const updated = await store.saveWorkout({ ...item, strengthGroup: group });
+    replacements.set(item.id, updated);
+  }
+  if (replacements.size) state.workouts = state.workouts.map(item => replacements.get(item.id) || item);
+  state.settings.workoutNames = (state.settings.workoutNames || []).filter(item => item !== name);
+  const nameGroups = { ...(state.settings.workoutNameGroups || {}) };
+  delete nameGroups[name];
+  state.settings.workoutNameGroups = nameGroups;
+  state.settings = await store.saveSettings(state.settings);
+  state.selectedWorkoutName = null;
+  $('#workout-name').value = '';
+  renderWorkout();
 }
 
 async function deleteWorkout(id) {

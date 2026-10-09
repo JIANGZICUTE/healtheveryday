@@ -192,7 +192,7 @@ input[type="color"],
 }
 
 .background-library-choice[data-current="true"]::after {
-  content: "正在使用";
+  content: "姝ｅ湪浣跨敤";
   justify-self: start;
   padding: 3px 7px;
   color: var(--leaf-deep);
@@ -2514,7 +2514,7 @@ hr {
 }
 
 .background-library-choice[data-current="true"]::after {
-  content: "正在使用";
+  content: "姝ｅ湪浣跨敤";
   justify-self: start;
   padding: 3px 7px;
   color: var(--leaf-deep);
@@ -4854,7 +4854,13 @@ textarea:hover {
 }
 /* Strength workout categories */
 #workout-strength-group-field {
-  margin: 12px 0 4px;
+  margin: 0;
+}
+
+@media (min-width: 721px) {
+  #workout-strength-fields {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 .workout-strength-category + .workout-strength-category {
@@ -4880,5 +4886,30 @@ textarea:hover {
 
 .workout-strength-category > header span {
   color: var(--muted);
+  font-size: 11px;
+}
+/* Keep primary workout selectors visually consistent */
+#workout-type,
+#workout-strength-group,
+#workout-name {
+  height: 48px;
+  min-height: 48px;
+  padding-top: 0;
+  padding-bottom: 0;
+  font: inherit;
+  font-weight: 620;
+}
+/* Keep every workout form control on the same full-width column */
+#workout-form .form-grid,
+#workout-form .form-grid.two,
+#workout-form .form-grid.three,
+#workout-form #workout-strength-fields {
+  grid-template-columns: minmax(0, 1fr);
+}
+.workout-option-delete {
+  min-height: 28px;
+  padding: 3px 8px;
+  justify-self: end;
+  color: var(--danger);
   font-size: 11px;
 }
