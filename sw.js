@@ -1,10 +1,10 @@
-const CACHE_NAME = 'nutrition-atlas-v29-workout-option-delete';
+const CACHE_NAME = 'nutrition-atlas-v30-workout-delete-layout';
 const APP_SHELL = [
   './index.html?v=17',
-  './styles.css?v=24',
+  './styles.css?v=25',
   './manifest.webmanifest?v=17',
   './icon.svg?v=17',
-  './js/app.js?v=26',
+  './js/app.js?v=27',
   './js/calculations.js?v=17',
   './js/charts.js?v=17',
   './js/foods.js?v=17',

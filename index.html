@@ -8,7 +8,7 @@
   <title>每日营养图谱</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css?v=24">
+  <link rel="stylesheet" href="styles.css?v=25">
 </head>
 <body>
   <a class="skip-link" href="#main-content">跳到主要内容</a>
@@ -158,29 +158,30 @@
         <div class="workout-layout">
           <form class="form-panel workout-form" id="workout-form" novalidate>
             <div class="form-section-heading"><h3>添加一项训练</h3><p>每次可记录一组或一段有氧</p></div>
-            <div class="form-grid two">
+            <div class="form-grid two workout-primary-grid">
               <label>训练类型
                 <select id="workout-type"><option value="strength">力量训练</option><option value="cardio">有氧训练</option><option value="rest">休息日</option></select>
               </label>
               <label id="workout-strength-group-field" hidden>力量分类
                 <select id="workout-strength-group"></select>
-                <button class="quiet-button workout-option-delete" id="delete-workout-strength-group" type="button" hidden>删除当前分类</button>
+                <button class="workout-option-delete" id="delete-workout-strength-group" type="button" title="删除当前分类" aria-label="删除当前分类" hidden>×</button>
               </label>
+              <div class="form-grid" id="workout-strength-group-custom-field" hidden>
+                <label>新分类名称
+                  <input id="workout-strength-group-custom" type="text" placeholder="输入新的力量分类" autocomplete="off">
+                </label>
+              </div>
+              <label id="workout-name-field">运动名称
+                <select id="workout-name" required></select>
+                <button class="workout-option-delete" id="delete-workout-name" type="button" title="删除当前名称" aria-label="删除当前名称" hidden>×</button>
+              </label>
+              <div class="form-grid" id="workout-name-custom-field" hidden>
+                <label>新运动名称
+                  <input id="workout-name-custom" type="text" placeholder="输入新的运动名称" autocomplete="off">
+                </label>
+              </div>
             </div>
-            <div class="form-grid" id="workout-strength-group-custom-field" hidden>
-              <label>新分类名称
-                <input id="workout-strength-group-custom" type="text" placeholder="输入新的力量分类" autocomplete="off">
-              </label>
-            </div>
-            <label id="workout-name-field">运动名称
-              <select id="workout-name" required></select>
-              <button class="quiet-button workout-option-delete" id="delete-workout-name" type="button" hidden>删除当前名称</button>
-            </label>
-            <div class="form-grid" id="workout-name-custom-field" hidden>
-              <label>新运动名称
-                <input id="workout-name-custom" type="text" placeholder="输入新的运动名称" autocomplete="off">
-              </label>
-            </div><div class="form-grid three" id="workout-strength-fields">
+            <div class="form-grid two" id="workout-strength-fields">
               <label>重量（kg）<input id="workout-weight" type="text" inputmode="decimal" placeholder="例如：50 或 10+5" required></label>
               <label>组数<input id="workout-sets" type="number" min="1" max="100" step="1" inputmode="numeric" value="1" required></label>
               <label>每组个数<input id="workout-reps" type="text" inputmode="numeric" placeholder="例如：10 或 10+5" required></label>
@@ -604,6 +605,6 @@
   </dialog>
   <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="true"></div>
 
-  <script type="module" src="js/app.js?v=26"></script>
+  <script type="module" src="js/app.js?v=27"></script>
 </body>
 </html>

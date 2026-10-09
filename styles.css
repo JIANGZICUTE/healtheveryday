@@ -4852,15 +4852,16 @@ textarea:hover {
 .nav-button:hover {
   transform: none;
 }
-/* Strength workout categories */
-#workout-strength-group-field {
+/* Strength workout categories and two-column form layout */
+#workout-strength-group-field,
+#workout-name-field {
+  position: relative;
   margin: 0;
 }
 
-@media (min-width: 721px) {
-  #workout-strength-fields {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
+.workout-primary-grid,
+#workout-strength-fields {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .workout-strength-category + .workout-strength-category {
@@ -4888,7 +4889,7 @@ textarea:hover {
   color: var(--muted);
   font-size: 11px;
 }
-/* Keep primary workout selectors visually consistent */
+
 #workout-type,
 #workout-strength-group,
 #workout-name {
@@ -4899,17 +4900,31 @@ textarea:hover {
   font: inherit;
   font-weight: 620;
 }
-/* Keep every workout form control on the same full-width column */
-#workout-form .form-grid,
-#workout-form .form-grid.two,
-#workout-form .form-grid.three,
-#workout-form #workout-strength-fields {
-  grid-template-columns: minmax(0, 1fr);
-}
+
 .workout-option-delete {
-  min-height: 28px;
-  padding: 3px 8px;
-  justify-self: end;
+  position: absolute;
+  right: 38px;
+  bottom: 12px;
+  display: grid;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  place-items: center;
   color: var(--danger);
-  font-size: 11px;
+  background: color-mix(in srgb, var(--theme-surface) 84%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 38%, transparent);
+  border-radius: 50%;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.workout-option-delete:hover {
+  background: color-mix(in srgb, var(--danger) 12%, var(--theme-surface));
+}
+
+@media (max-width: 720px) {
+  .workout-primary-grid,
+  #workout-strength-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

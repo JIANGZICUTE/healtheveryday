@@ -2090,7 +2090,7 @@ async function handleBodyClick(event) {
   if (deleteBackgroundImageButton) return deleteStoredBackgroundImage(deleteBackgroundImageButton.dataset.deleteBackgroundImageId);
 }
 
-async function deleteWorkoutStrengthGroupOption() {
+async function deleteWorkoutStrengthGroupOption(event) {
   const group = $('#workout-strength-group').value.trim();
   if (!group || group === '__custom__' || group === '未分类') return;
   const nameGroups = { ...(state.settings.workoutNameGroups || {}) };
@@ -2113,7 +2113,7 @@ async function deleteWorkoutStrengthGroupOption() {
   renderWorkout();
 }
 
-async function deleteWorkoutNameOption() {
+async function deleteWorkoutNameOption(event) {
   const name = $('#workout-name').value.trim();
   if (!name || name === '__custom__') return;
   const group = workoutNameGroup(name);
