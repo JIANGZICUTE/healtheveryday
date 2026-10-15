@@ -1,6 +1,6 @@
-import { NutritionStore, DEFAULT_SETTINGS } from './store.js?db=4';
+import { NutritionStore, DEFAULT_SETTINGS } from './store.js?db=5';
 import { SyncManager } from './sync-manager.js?v=17';
-import { FOOD_LIBRARY, searchFoods } from './foods.js';
+import { FOOD_LIBRARY, searchFoods } from './foods.js?v=2';
 import {
   calculateActivityMultiplier,
   calculateBmr,
@@ -340,6 +340,8 @@ $('#workout-name').addEventListener('change', handleWorkoutNameInput);
   $('#profile-form').addEventListener('submit', handleProfileSubmit);
   $('#weight-form').addEventListener('submit', handleWeightSubmit);
   $('#history-range').addEventListener('change', renderHistory);
+  $('#workout-history-range').addEventListener('change', renderWorkoutHistory);
+  $('#workout-history-search').addEventListener('input', renderWorkoutHistory);
   $('#toggle-history-data').addEventListener('click', toggleHistoryTable);
   $('#export-data').addEventListener('click', exportBackup);
   $('#import-file').addEventListener('change', prepareImport);
@@ -606,10 +608,21 @@ function workoutGroupMarkup(group, compact = false) {
     </article>`;
 }
 function renderWorkoutHistory() {
-  const range = new Set(createDateRange(todayKey, 30));
-  const recent = state.workouts.filter(item => range.has(item.date)).sort((first, second) => second.date.localeCompare(first.date) || String(first.createdAt).localeCompare(String(second.createdAt)));
+  const days = Number($('#workout-history-range').value) || 30;
+  const query = $('#workout-history-search').value.trim().toLowerCase();
+  const range = new Set(createDateRange(todayKey, days));
+  const recent = state.workouts
+    .filter(item => range.has(item.date))
+    .sort((first, second) => second.date.localeCompare(first.date) || String(first.createdAt).localeCompare(String(second.createdAt)));
+  let visible = recent;
+  if (query) {
+    const matchingDates = new Set(recent
+      .filter(item => item.type === 'strength' && String(item.strengthGroup || workoutNameGroup(item.name)).toLowerCase().includes(query))
+      .map(item => item.date));
+    visible = recent.filter(item => matchingDates.has(item.date));
+  }
   const grouped = new Map();
-  recent.forEach(item => {
+  visible.forEach(item => {
     if (!grouped.has(item.date)) grouped.set(item.date, []);
     grouped.get(item.date).push(item);
   });
@@ -618,13 +631,12 @@ function renderWorkoutHistory() {
     const items = grouped.get(date);
     const strength = items.filter(item => item.type === 'strength');
     const cardio = items.filter(item => item.type === 'cardio');
-    const rest = items.filter(item => item.type === 'rest');
     const summary = [
       strength.length ? `${strength.reduce((sum, item) => sum + Number(item.sets || 0), 0)} 组力量` : '',
       cardio.length ? `${formatNumber(cardio.reduce((sum, item) => sum + Number(item.durationMinutes || 0), 0), 0)} 分钟有氧` : ''
     ].filter(Boolean).join(' · ');
     return `<section class="workout-history-day" data-date="${escapeHtml(date)}"><header><strong>${formatDateLabel(date)}</strong><span>${summary}</span></header>${renderWorkoutTypeSections(groupWorkouts(items), true)}</section>`;
-  }).join('') : '<p class="empty-inline">近 30 天还没有训练记录。</p>';
+  }).join('') : '<p class="empty-inline">没有符合条件的训练记录。</p>';
 }
 function handleWorkoutStrengthGroupChange() {
   const select = $('#workout-strength-group');
@@ -895,7 +907,7 @@ function renderMeals(entries) {
       ${group.entries.length ? `<ul class="meal-entry-list">${group.entries.map(entry => `
         <li>
           <div class="entry-main"><strong>${escapeHtml(entry.foodSnapshot?.name || '未知食物')}</strong><span>${entry.unit === 'serving' && entry.servingGrams ? `${formatServingAmount(entry.amount, entry.servingLabel)}（${formatNumber(entry.grams, 0)}g）` : `${formatNumber(entry.grams, 0)}g`} · ${escapeHtml(entry.foodSnapshot?.state || '')}</span></div>
-          <div class="entry-nutrition"><strong>${formatNumber(entry.nutrients.kcal, 0)} kcal</strong><span>碳 ${formatNumber(entry.nutrients.carbs, 1)} · 蛋 ${formatNumber(entry.nutrients.protein, 1)} · 脂 ${formatNumber(entry.nutrients.fat, 1)}</span></div>
+<div class="entry-nutrition"><strong>${formatNumber(entry.nutrients.kcal, 0)} kcal</strong><span>碳 ${formatNumber(entry.nutrients.carbs, 1)} · 蛋 ${formatNumber(entry.nutrients.protein, 1)} · 脂 ${formatNumber(entry.nutrients.fat, 1)}</span><span>钠 ${formatNumber(entry.nutrients.sodium, 0)} mg · 钾 ${formatNumber(entry.nutrients.potassium, 0)} mg · 纤 ${formatNumber(entry.nutrients.fiber, 1)} g</span></div>
           <button class="icon-button danger-icon" type="button" data-delete-entry="${entry.id}" aria-label="删除 ${escapeHtml(entry.foodSnapshot?.name || '食物')} 记录"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M9 7V4h6v3m2 0-1 13H8L7 7m3 4v5m4-5v5"/></svg></button>
         </li>`).join('')}</ul>` : `
         <button class="empty-meal" type="button" data-add-meal="${group.meal}">
@@ -1133,6 +1145,7 @@ async function selectEntryFood(id) {
   state.selectedEntryFood = food;
   await rememberFoodSearch(id);
   $('#entry-food-results').innerHTML = '';
+  $('#entry-unit').value = food.servingGrams ? 'serving' : 'grams';
   updateEntryUnitControl();
   $('#entry-amount').focus();
   renderEntryPreview();

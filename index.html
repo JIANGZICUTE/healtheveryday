@@ -198,7 +198,20 @@
           <div class="workout-today-list" id="workout-today-list"></div>
         </article>
         <article class="workout-record-panel history-workouts">
-          <div class="section-heading compact"><div><h3>近 30 天训练历史</h3><p class="section-note">每天刷新，按日期归档</p></div></div>
+          <div class="section-heading compact"><div><h3>训练历史</h3><p class="section-note">按时间范围查看，可按力量分类搜索</p></div></div>
+          <div class="form-grid two workout-history-toolbar">
+            <label class="compact-field">时间范围
+              <select id="workout-history-range">
+                <option value="30" selected>最近 30 天</option>
+                <option value="90">最近 90 天</option>
+                <option value="180">最近 180 天</option>
+                <option value="365">最近 1 年</option>
+              </select>
+            </label>
+            <label class="compact-field">力量分类搜索
+              <input id="workout-history-search" type="search" placeholder="例如：腿、背+手臂" autocomplete="off">
+            </label>
+          </div>
           <div class="workout-history-list" id="workout-history-list"></div>
         </article>
       </section>
@@ -605,6 +618,6 @@
   </dialog>
   <div class="toast-region" id="toast-region" aria-live="polite" aria-atomic="true"></div>
 
-  <script type="module" src="js/app.js?v=27"></script>
+  <script type="module" src="js/app.js?v=28"></script>
 </body>
 </html>

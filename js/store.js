@@ -177,15 +177,27 @@ export class NutritionStore {
     await this.#deleteWithSync(STORE_NAMES.foods, id);
   }
 
-  async seedFoods(foods) {
-    const existing = new Set((await this.#all(STORE_NAMES.foods)).map(food => food.id));
-    const missing = foods.filter(food => !existing.has(food.id));
-    if (!missing.length) return 0;
+async seedFoods(foods) {
+    const records = await this.#all(STORE_NAMES.foods);
+    const existing = new Map(records.map(food => [food.id, food]));
+    const updates = foods
+      .map(food => normalizeFood({ ...food, custom: false }))
+      .filter(food => {
+        const current = existing.get(food.id);
+        if (!current) return true;
+        if (current.custom) return false;
+        return current.name !== food.name
+          || current.category !== food.category
+          || current.state !== food.state
+          || JSON.stringify(current.aliases || []) !== JSON.stringify(food.aliases || [])
+          || JSON.stringify(current.per100g || {}) !== JSON.stringify(food.per100g || {});
+      });
+    if (!updates.length) return 0;
     await this.#runTransaction(STORE_NAMES.foods, 'readwrite', stores => {
       const foodStore = stores[STORE_NAMES.foods];
-      missing.forEach(food => foodStore.put(normalizeFood({ ...food, custom: false })));
+      updates.forEach(food => foodStore.put(food));
     });
-    return missing.length;
+    return updates.length;
   }
 
   async getWorkouts(date) {
